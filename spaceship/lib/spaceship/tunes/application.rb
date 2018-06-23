@@ -1,3 +1,16 @@
+require_relative '../test_flight/group'
+require_relative '../test_flight/build'
+require_relative 'app_details'
+require_relative 'app_ratings'
+require_relative 'app_submission'
+require_relative 'app_version'
+require_relative 'app_version_generated_promocodes'
+require_relative 'app_version_history'
+require_relative 'build_train'
+require_relative 'iap'
+require_relative 'tunes_base'
+require_relative 'version_set'
+
 module Spaceship
   module Tunes
     class Application < TunesBase
@@ -67,8 +80,8 @@ module Spaceship
         #   This can't be longer than 255 characters.
         # @param primary_language (String): If localized app information isn't available in an
         #   App Store territory, the information from your primary language will be used instead.
-        # @param version (String): The version number is shown on the App Store and should
-        #   match the one you used in Xcode.
+        # @param version *DEPRECATED: Use `ensure_version!` method instead*
+        #   (String): The version number is shown on the App Store and should match the one you used in Xcode.
         # @param sku (String): A unique ID for your app that is not visible on the App Store.
         # @param bundle_id (String): The bundle ID must match the one you used in Xcode. It
         #   can't be changed after you submit your first build.
@@ -77,15 +90,16 @@ module Spaceship
         # @param platform (String): Platform one of (ios,osx)
         #  should it be an ios or an osx app
 
-        def create!(name: nil, primary_language: nil, version: nil, sku: nil, bundle_id: nil, bundle_id_suffix: nil, company_name: nil, platform: nil)
+        def create!(name: nil, primary_language: nil, version: nil, sku: nil, bundle_id: nil, bundle_id_suffix: nil, company_name: nil, platform: nil, itunes_connect_users: nil)
+          puts("The `version` parameter is deprecated. Use `ensure_version!` method instead") if version
           client.create_application!(name: name,
                          primary_language: primary_language,
-                                  version: version,
                                       sku: sku,
                                 bundle_id: bundle_id,
                                 bundle_id_suffix: bundle_id_suffix,
                                 company_name: company_name,
-                                    platform: platform)
+                                    platform: platform,
+                                    itunes_connect_users: itunes_connect_users)
         end
       end
 
@@ -100,18 +114,18 @@ module Spaceship
         nil
       end
 
-      # @return (Spaceship::AppVersion) Receive the version that is currently live on the
+      # @return (Spaceship::Tunes::AppVersion) Receive the version that is currently live on the
       #  App Store. You can't modify all values there, so be careful.
       def live_version(platform: nil)
-        Spaceship::AppVersion.find(self, self.apple_id, true, platform: platform)
+        Spaceship::Tunes::AppVersion.find(self, self.apple_id, true, platform: platform)
       end
 
-      # @return (Spaceship::AppVersion) Receive the version that can fully be edited
+      # @return (Spaceship::Tunes::AppVersion) Receive the version that can fully be edited
       def edit_version(platform: nil)
-        Spaceship::AppVersion.find(self, self.apple_id, false, platform: platform)
+        Spaceship::Tunes::AppVersion.find(self, self.apple_id, false, platform: platform)
       end
 
-      # @return (Spaceship::AppVersion) This will return the `edit_version` if available
+      # @return (Spaceship::Tunes::AppVersion) This will return the `edit_version` if available
       #   and fallback to the `live_version`. Use this to just access the latest data
       def latest_version(platform: nil)
         edit_version(platform: platform) || live_version(platform: platform)
@@ -129,10 +143,10 @@ module Spaceship
         client.get_resolution_center(apple_id, platform)
       end
 
-      def ratings
-        attrs = client.get_rating_summary(apple_id, platform)
+      def ratings(version_id: '', storefront: '')
+        attrs = client.get_ratings(apple_id, platform, version_id, storefront)
         attrs[:application] = self
-        Tunes::AppRatings.factory(attrs)
+        Tunes::AppRatings.new(attrs)
       end
 
       def platforms
@@ -223,6 +237,15 @@ module Spaceship
         end
       end
 
+      def reject_version_if_possible!
+        can_reject = edit_version.can_reject_version
+        if can_reject
+          client.reject!(apple_id, edit_version.version_id)
+        end
+
+        return can_reject
+      end
+
       # set the price tier. This method doesn't require `save` to be called
       def update_price_tier!(price_tier)
         client.update_price_tier!(self.apple_id, price_tier)
@@ -260,15 +283,13 @@ module Spaceship
       # TestFlight: A reference to all the build trains
       # @return [Hash] a hash, the version number and platform being the key
       def build_trains(platform: nil)
-        Tunes::BuildTrain.all(self, self.apple_id, platform: platform)
+        TestFlight::BuildTrains.all(app_id: self.apple_id, platform: platform || self.platform)
       end
 
       # The numbers of all build trains that were uploaded
       # @return [Array] An array of train version numbers
       def all_build_train_numbers(platform: nil)
-        client.all_build_trains(app_id: self.apple_id, platform: platform).fetch("trains").collect do |current|
-          current["versionString"]
-        end
+        return self.build_trains(platform: platform || self.platform).versions
       end
 
       # Receive the build details for a specific build
@@ -276,46 +297,45 @@ module Spaceship
       # which might happen if you don't use TestFlight
       # This is used to receive dSYM files from Apple
       def all_builds_for_train(train: nil, platform: nil)
-        client.all_builds_for_train(app_id: self.apple_id, train: train, platform: platform).fetch("items", []).collect do |attrs|
-          attrs[:apple_id] = self.apple_id
-          Tunes::Build.factory(attrs)
-        end
-      end
-
-      # @return [Array]A list of binaries which are in the invalid state
-      def all_invalid_builds(platform: nil)
-        builds = []
-
-        self.build_trains(platform: platform).values.each do |train|
-          builds.concat(train.invalid_builds)
-        end
-
-        return builds
+        return TestFlight::Build.builds_for_train(app_id: self.apple_id, platform: platform || self.platform, train_version: train)
       end
 
       # @return [Array] This will return an array of *all* processing builds
       #   this include pre-processing or standard processing
       def all_processing_builds(platform: nil)
-        builds = []
+        return TestFlight::Build.all_processing_builds(app_id: self.apple_id, platform: platform || self.platform)
+      end
 
-        self.build_trains(platform: platform).each do |version_number, train|
-          builds.concat(train.processing_builds)
+      def tunes_all_build_trains(app_id: nil, platform: nil)
+        resp = client.all_build_trains(app_id: apple_id, platform: platform)
+        trains = resp["trains"] or []
+        trains.map do |attrs|
+          attrs['application'] = self
+          Tunes::BuildTrain.factory(attrs)
         end
+      end
 
-        return builds
+      def tunes_all_builds_for_train(train: nil, platform: nil)
+        resp = client.all_builds_for_train(app_id: apple_id, train: train, platform: platform)
+        items = resp["items"] or []
+        items.map do |attrs|
+          attrs['apple_id'] = apple_id
+          Tunes::Build.factory(attrs)
+        end
+      end
+
+      def tunes_build_details(train: nil, build_number: nil, platform: nil)
+        resp = client.build_details(app_id: apple_id, train: train, build_number: build_number, platform: platform)
+        resp['apple_id'] = apple_id
+        Tunes::BuildDetails.factory(resp)
       end
 
       # Get all builds that are already processed for all build trains
       # You can either use the return value (array) or pass a block
       def builds(platform: nil)
-        all_builds = []
-        self.build_trains(platform: platform).each do |version_number, train|
-          train.builds.each do |build|
-            yield(build) if block_given?
-            all_builds << build unless block_given?
-          end
-        end
-        all_builds
+        all = TestFlight::Build.all(app_id: self.apple_id, platform: platform || self.platform)
+        return all unless block_given?
+        all.each { |build| yield(build) }
       end
 
       #####################################################
@@ -328,7 +348,7 @@ module Spaceship
           raise "Could not find a valid version to submit for review"
         end
 
-        Spaceship::AppSubmission.create(self, version)
+        Spaceship::Tunes::AppSubmission.create(self, version)
       end
 
       # Cancels all ongoing TestFlight beta submission for this application
@@ -370,58 +390,8 @@ module Spaceship
       # @!group Testers
       #####################################################
 
-      # Add all testers (internal and external) to the current app list
-      def add_all_testers!
-        Tunes::Tester.external.add_all_to_app!(self.apple_id)
-        Tunes::Tester.internal.add_all_to_app!(self.apple_id)
-      end
-
-      # @return (Array) Returns all external testers available for this app
-      def external_testers
-        Tunes::Tester.external.all_by_app(self.apple_id)
-      end
-
-      # @return (Array) Returns all internal testers available for this app
-      def internal_testers
-        Tunes::Tester.internal.all_by_app(self.apple_id)
-      end
-
-      # @return (Spaceship::Tunes::Tester.external) Returns the external tester matching the parameter
-      #   as either the Tester id or email
-      # @param identifier (String) (required): Value used to filter the tester
-      def find_external_tester(identifier)
-        Tunes::Tester.external.find_by_app(self.apple_id, identifier)
-      end
-
-      # @return (Spaceship::Tunes::Tester.internal) Returns the internal tester matching the parameter
-      #   as either the Tester id or email
-      # @param identifier (String) (required): Value used to filter the tester
-      def find_internal_tester(identifier)
-        Tunes::Tester.internal.find_by_app(self.apple_id, identifier)
-      end
-
-      # Add external tester to the current app list, if it doesn't exist will be created
-      # @param email (String) (required): The email of the tester
-      # @param first_name (String) (optional): The first name of the tester (Ignored if user already exist)
-      # @param last_name (String) (optional): The last name of the tester (Ignored if user already exist)
-      def add_external_tester!(email: nil, first_name: nil, last_name: nil)
-        raise "Tester is already on #{self.name} betatesters" if find_external_tester(email)
-
-        tester = Tunes::Tester.external.find(email) || Tunes::Tester.external.create!(email: email,
-                                                                                 first_name: first_name,
-                                                                                  last_name: last_name)
-        tester.add_to_app!(self.apple_id)
-      end
-
-      # Remove external tester from the current app list that matching the parameter
-      #   as either the Tester id or email
-      # @param identifier (String) (required): Value used to filter the tester
-      def remove_external_tester!(identifier)
-        tester = find_external_tester(identifier)
-
-        raise "Tester is not on #{self.name} betatesters" unless tester
-
-        tester.remove_from_app!(self.apple_id)
+      def default_external_group
+        TestFlight::Group.default_external_group(app_id: self.apple_id)
       end
 
       #####################################################

@@ -18,7 +18,7 @@ module Fastlane
         zipped_bundle = Actions::ZipAction.run(path: app_path,
                                         output_path: File.join(tmp_path, "Result.zip"))
 
-        Actions::AppetizeAction.run(path: zipped_bundle,
+        other_action.appetize(path: zipped_bundle,
                                api_token: params[:api_token])
 
         public_key = Actions.lane_context[SharedValues::APPETIZE_PUBLIC_KEY]
@@ -39,8 +39,8 @@ module Fastlane
 
       def self.details
         [
-          "This should be called from danger",
-          "More information in the [device_grid guide](https://github.com/fastlane/fastlane/blob/master/fastlane/lib/fastlane/actions/device_grid/README.md)"
+          "This should be called from danger.",
+          "More information in the [device_grid guide](https://github.com/fastlane/fastlane/blob/master/fastlane/lib/fastlane/actions/device_grid/README.md)."
         ].join("\n")
       end
 
@@ -81,9 +81,7 @@ module Fastlane
       end
 
       def self.example_code
-        [
-
-        ]
+        nil
       end
 
       def self.category

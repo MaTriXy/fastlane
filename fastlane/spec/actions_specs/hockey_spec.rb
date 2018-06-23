@@ -1,6 +1,10 @@
 describe Fastlane do
   describe Fastlane::FastFile do
     describe "Hockey Integration" do
+      before :each do
+        allow(FastlaneCore::FastlaneFolder).to receive(:path).and_return(nil)
+      end
+
       it "raises an error if no build file was given" do
         expect do
           Fastlane::FastFile.new.parse("lane :test do
@@ -8,7 +12,7 @@ describe Fastlane do
               api_token: 'xxx'
             })
           end").runner.execute(:test)
-        end.to raise_error("You have to provide a build file")
+        end.to raise_error("You have to provide a build file (params 'apk' or 'ipa')")
       end
 
       describe "iOS" do
@@ -60,6 +64,7 @@ describe Fastlane do
 
         expect(values[:notify]).to eq(1.to_s)
         expect(values[:status]).to eq(2.to_s)
+        expect(values[:create_status]).to eq(2.to_s)
         expect(values[:notes]).to eq("No changelog given")
         expect(values[:release_type]).to eq(0.to_s)
         expect(values.key?(:tags)).to eq(false)
@@ -113,6 +118,7 @@ describe Fastlane do
 
         expect(values[:notify]).to eq("1")
         expect(values[:status]).to eq("2")
+        expect(values[:create_status]).to eq(2.to_s)
         expect(values[:notes]).to eq("No changelog given")
         expect(values[:release_type]).to eq("0")
         expect(values.key?(:tags)).to eq(false)

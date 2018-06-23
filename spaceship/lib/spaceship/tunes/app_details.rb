@@ -1,3 +1,7 @@
+require_relative 'errors'
+require_relative 'language_item'
+require_relative 'tunes_base'
+
 module Spaceship
   module Tunes
     class AppDetails < TunesBase
@@ -12,6 +16,9 @@ module Spaceship
 
       # @return (Hash) A hash representing the app name in all languages
       attr_reader :name
+
+      # @return (Hash) A hash representing the subtitle in all languages
+      attr_reader :subtitle
 
       # @return (Hash) A hash representing the privacy URL in all languages
       attr_reader :privacy_url
@@ -63,6 +70,7 @@ module Spaceship
       def unfold_languages
         {
           name: :name,
+          subtitle: :subtitle,
           privacyPolicyUrl: :privacy_url,
           privacyPolicy: :apple_tv_privacy_policy
         }.each do |json, attribute|
@@ -73,7 +81,7 @@ module Spaceship
       # Push all changes that were made back to iTunes Connect
       def save!
         client.update_app_details!(application.apple_id, raw_data)
-      rescue Spaceship::TunesClient::ITunesConnectError => ex
+      rescue Spaceship::Tunes::Error => ex
         if ex.to_s == "operation_failed"
           # That's alright, we get this error message if nothing has changed
         else
@@ -131,7 +139,7 @@ module Spaceship
       end
 
       def prefix_apps(value)
-        return value unless value.include? "Stickers"
+        return value unless value.include?("Stickers")
         value.include?("Apps") ? value : "Apps.#{value}"
       end
     end

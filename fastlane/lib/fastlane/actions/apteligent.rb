@@ -11,16 +11,16 @@ module Fastlane
         # will reanable it when it is fixed
         # result = Fastlane::Actions.sh(command.join(' '), log: false)
         shell_command = command.join(' ')
-        return shell_command if Helper.is_test?
+        return shell_command if Helper.test?
         result = Actions.sh(shell_command)
         fail_on_error(result)
       end
 
       def self.fail_on_error(result)
         if result != "200"
-          UI.crash! "Server error, failed to upload the dSYM file."
+          UI.crash!("Server error, failed to upload the dSYM file.")
         else
-          UI.success 'dSYM successfully uploaded to Apteligent!'
+          UI.success('dSYM successfully uploaded to Apteligent!')
         end
       end
 
@@ -45,11 +45,13 @@ module Fastlane
       def self.upload_options(params)
         file_path = dsym_path(params).shellescape
 
+        # rubocop: disable Style/FormatStringToken
         options = []
         options << "--write-out %{http_code} --silent --output /dev/null"
         options << "-F dsym=@#{file_path}"
         options << "-F key=#{params[:api_key].shellescape}"
         options
+        # rubocop: enable Style/FormatStringToken
       end
 
       #####################################################

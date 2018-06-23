@@ -11,10 +11,11 @@ module Fastlane
           "ios-deploy",
           params[:extra],
           "--bundle",
-          params[:ipa]
+          params[:ipa].shellescape
         ]
         taxi_cmd << "--no-wifi" if params[:skip_wifi]
         taxi_cmd << ["--id", params[:device_id]] if params[:device_id]
+        taxi_cmd.compact!
         return taxi_cmd.join(" ") if Helper.test?
         Actions.sh(taxi_cmd.join(" "))
         UI.message("Deployed #{params[:ipa]} to device!")
@@ -55,10 +56,11 @@ module Fastlane
                                        optional: true,
                                        is_string: true,
                                        default_value: Actions.lane_context[SharedValues::IPA_OUTPUT_PATH] || Dir["*.ipa"].first,
+                                       default_value_dynamic: true,
                                        verify_block: proc do |value|
                                          unless Helper.test?
-                                           UI.user_error!("Could not find ipa file at path '#{value}'") unless File.exist? value
-                                           UI.user_error!("'#{value}' doesn't seem to be an ipa file") unless value.end_with? ".ipa"
+                                           UI.user_error!("Could not find ipa file at path '#{value}'") unless File.exist?(value)
+                                           UI.user_error!("'#{value}' doesn't seem to be an ipa file") unless value.end_with?(".ipa")
                                          end
                                        end)
         ]
@@ -69,7 +71,7 @@ module Fastlane
       end
 
       def self.details
-        "Installs the ipa on the device, if no id is given, the first found iOS device will be used, works via USB or Wi-Fi. This requires `ios-deploy` to be installed please have a look at [ios-deploy](https://github.com/phonegap/ios-deploy). to quickly install it, use `npm -g i ios-deploy`"
+        "Installs the ipa on the device. If no id is given, the first found iOS device will be used. Works via USB or Wi-Fi. This requires `ios-deploy` to be installed. Please have a look at [ios-deploy](https://github.com/phonegap/ios-deploy). To quickly install it, use `npm -g i ios-deploy`"
       end
 
       def self.is_supported?(platform)

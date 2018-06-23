@@ -258,13 +258,13 @@
                         "isRequired": false,
                         "errorKeys": null
                     },
-                    "supportURL": {
+                    "supportUrl": {
                         "value": "http://url.com",
                         "isEditable": true,
                         "isRequired": true,
                         "errorKeys": null
                     },
-                    "marketingURL": {
+                    "marketingUrl": {
                         "value": "https://sunapps.net",
                         "isEditable": true,
                         "isRequired": false,
@@ -822,6 +822,12 @@
         },
         "autoReleaseDate": {
             "value": null,
+            "isEditable": false,
+            "isRequired": false,
+            "errorKeys": null
+        },
+        "ratingsReset": {
+            "value": false,
             "isEditable": false,
             "isRequired": false,
             "errorKeys": null

@@ -2,13 +2,11 @@ module Fastlane
   module Actions
     class TestSampleCodeAction < Action
       def self.run(params)
-        content = File.read(params[:path])
-
+        content = params[:content] || File.read(params[:path])
         fill_in_env_variables
 
-        # /m says we ignore new line
         errors = []
-        content.scan(/```ruby\n([^`]*)\n```/m).each do |current_match|
+        content.scan(/```ruby\n(((.|\n)(?!```))*)\n```/).each do |current_match|
           current_match = current_match.first # we only expect one match
           next if current_match.include?("sh(") # we don't want to run any shell scripts
 
@@ -29,7 +27,7 @@ module Fastlane
           end
         end
 
-        UI.error("Found errors in the documentation, more information above") unless errors.empty?
+        UI.error("Found errors in the documentation, more information below") unless errors.empty?
         errors.each do |ex|
           UI.error(ex)
         end
@@ -43,6 +41,13 @@ module Fastlane
         return if blacklist.include?(method_sym)
 
         class_ref = self.runner.class_reference_from_action_name(method_sym)
+        unless class_ref
+          alias_found = self.runner.find_alias(method_sym.to_s)
+          if alias_found
+            class_ref = self.runner.class_reference_from_action_name(alias_found.to_sym)
+          end
+        end
+
         UI.user_error!("Could not find method or action named '#{method_sym}'") if class_ref.nil?
         available_options = class_ref.available_options
 
@@ -54,7 +59,7 @@ module Fastlane
             config_item = available_options.find { |a| a.key == current_argument }
             UI.user_error!("Unknown parameter '#{current_argument}' for action '#{method_sym}'") if config_item.nil?
 
-            if config_item.data_type && !value.kind_of?(config_item.data_type) && !config_item.optional
+            if config_item.data_type && !value.kind_of?(config_item.data_type) && !config_item.optional && !config_item.skip_type_validation
               UI.user_error!("'#{current_argument}' value must be a #{config_item.data_type}! Found #{value.class} instead.")
             end
           end
@@ -77,14 +82,16 @@ module Fastlane
           :refresh_dsyms,
           :lane,
           :before_all,
-          :verify_xcode
+          :verify_xcode,
+          :error
         ]
       end
 
       # Metadata
       def self.available_options
         [
-          FastlaneCore::ConfigItem.new(key: :path)
+          FastlaneCore::ConfigItem.new(key: :path),
+          FastlaneCore::ConfigItem.new(key: :content)
         ]
       end
 

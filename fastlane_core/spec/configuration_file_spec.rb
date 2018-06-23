@@ -1,7 +1,7 @@
 describe FastlaneCore do
   describe FastlaneCore::ConfigurationFile do
     describe "Properly loads and handles various configuration files" do
-      let (:options) do
+      let(:options) do
         [
           FastlaneCore::ConfigItem.new(key: :devices,
                                        description: "desc",
@@ -55,6 +55,40 @@ describe FastlaneCore do
         config = FastlaneCore::Configuration.create(options, { app_identifier: "detlef.app.super" })
         config.load_configuration_file('ConfigFileEmpty')
         expect(config[:app_identifier]).to eq("detlef.app.super")
+      end
+
+      it "prints a warning if no value is provided" do
+        important_message = "In the config file './fastlane_core/spec/fixtures/ConfigFileEmptyValue' you have the line apple_id, but didn't provide any value. Make sure to append a value right after the option name. Make sure to check the docs for more information"
+        expect(FastlaneCore::UI).to receive(:important).with(important_message)
+        expect(FastlaneCore::UI).to receive(:important).with("No values defined in './fastlane_core/spec/fixtures/ConfigFileEmptyValue'")
+
+        config = FastlaneCore::Configuration.create(options, { app_identifier: "detlef.app.super" })
+        config.load_configuration_file('ConfigFileEmptyValue')
+        expect(config[:app_identifier]).to eq("detlef.app.super") # original value
+      end
+
+      it "supports modifying of frozen strings too" do
+        # Test that a value can be modified (this isn't the case by default if it's set via ENV)
+        app_identifier = "com.krausefx.yolo"
+        with_env_values('SOMETHING_RANDOM_APP_IDENTIFIER' => app_identifier) do
+          config = FastlaneCore::Configuration.create(options, {})
+          config.load_configuration_file('ConfigFileEnv')
+          expect(config[:app_identifier]).to eq(app_identifier)
+          config[:app_identifier].gsub!("yolo", "yoLiveTwice")
+          expect(config[:app_identifier]).to eq("com.krausefx.yoLiveTwice")
+        end
+      end
+
+      it "supports modifying of frozen strings that are returned via blocks too" do
+        # Test that a value can be modified (this isn't the case by default if it's set via ENV)
+        ios_version = "9.1"
+        with_env_values('SOMETHING_RANDOM_IOS_VERSION' => ios_version) do
+          config = FastlaneCore::Configuration.create(options, {})
+          config.load_configuration_file('ConfigFileEnv')
+          expect(config[:ios_version]).to eq(ios_version)
+          config[:ios_version].gsub!(".1", ".2")
+          expect(config[:ios_version]).to eq("9.2")
+        end
       end
 
       it "properly loads boolean values" do
@@ -112,7 +146,7 @@ describe FastlaneCore do
             if arguments == ["parameter"]
               expect do
                 block.call(arguments.first, "custom")
-              end.to raise_error "Yeah: parameter custom"
+              end.to raise_error("Yeah: parameter custom")
             else UI.user_error!("no")
             end
           else UI.user_error!("no")

@@ -2,16 +2,18 @@ module Fastlane
   module Actions
     class SwiftlintAction < Action
       def self.run(params)
-        if `which swiftlint`.to_s.length == 0 and !Helper.test?
-          UI.user_error!("You have to install swiftlint using `brew install swiftlint`")
+        if `which swiftlint`.to_s.length == 0 && params[:executable].nil? && !Helper.test?
+          UI.user_error!("You have to install swiftlint using `brew install swiftlint` or specify the executable path with the `:executable` option.")
         end
 
-        version = swiftlint_version
-        if params[:mode] == :autocorrect and version < Gem::Version.new('0.5.0') and !Helper.test?
+        version = swiftlint_version(executable: params[:executable])
+        if params[:mode] == :autocorrect && version < Gem::Version.new('0.5.0') && !Helper.test?
           UI.user_error!("Your version of swiftlint (#{version}) does not support autocorrect mode.\nUpdate swiftlint using `brew update && brew upgrade swiftlint`")
         end
 
-        command = "swiftlint #{params[:mode]}"
+        command = (params[:executable] || "swiftlint").dup
+        command << " #{params[:mode]}"
+        command << " --path #{params[:path].shellescape}" if params[:path]
         command << supported_option_switch(params, :strict, "0.9.2", true)
         command << " --config #{params[:config_file].shellescape}" if params[:config_file]
         command << " --reporter #{params[:reporter]}" if params[:reporter]
@@ -37,16 +39,18 @@ module Fastlane
       end
 
       # Get current SwiftLint version
-      def self.swiftlint_version
-        Gem::Version.new(`swiftlint version`.chomp)
+      def self.swiftlint_version(executable: nil)
+        binary = executable || 'swiftlint'
+        Gem::Version.new(`#{binary} version`.chomp)
       end
 
       # Return "--option" switch if option is on and current SwiftLint version is greater or equal than min version.
       # Return "" otherwise.
       def self.supported_option_switch(params, option, min_version, can_ignore = false)
         return "" unless params[option]
-        if swiftlint_version < Gem::Version.new(min_version)
-          message = "Your version of swiftlint (#{swiftlint_version}) does not support '--#{option}' option.\nUpdate swiftlint to #{min_version} or above using `brew update && brew upgrade swiftlint`"
+        version = swiftlint_version(executable: params[:executable])
+        if version < Gem::Version.new(min_version)
+          message = "Your version of swiftlint (#{version}) does not support '--#{option}' option.\nUpdate swiftlint to #{min_version} or above using `brew update && brew upgrade swiftlint`"
           message += "\nThe option will be ignored." if can_ignore
           can_ignore ? UI.important(message) : UI.user_error!(message)
           ""
@@ -63,16 +67,20 @@ module Fastlane
         "Run swift code validation using SwiftLint"
       end
 
-      def self.details
-      end
-
       def self.available_options
         [
           FastlaneCore::ConfigItem.new(key: :mode,
-                                       description: "SwiftLint mode: :lint (default) or :autocorrect; default is :lint",
+                                       description: "SwiftLint mode: :lint or :autocorrect",
                                        is_string: false,
                                        default_value: :lint,
                                        optional: true),
+          FastlaneCore::ConfigItem.new(key: :path,
+                                       description: "Specify path to lint",
+                                       is_string: true,
+                                       optional: true,
+                                       verify_block: proc do |value|
+                                         UI.user_error!("Couldn't find path '#{File.expand_path(value)}'") unless File.exist?(value)
+                                       end),
           FastlaneCore::ConfigItem.new(key: :output_file,
                                        description: 'Path to output SwiftLint result',
                                        optional: true),
@@ -102,6 +110,10 @@ module Fastlane
                                        description: "Don't print status logs like 'Linting <file>' & 'Done linting'",
                                        default_value: false,
                                        is_string: false,
+                                       optional: true),
+          FastlaneCore::ConfigItem.new(key: :executable,
+                                       description: "Path to the `swiftlint` executable on your machine",
+                                       is_string: true,
                                        optional: true)
         ]
       end
@@ -124,6 +136,7 @@ module Fastlane
         [
           'swiftlint(
             mode: :lint,                          # SwiftLint mode: :lint (default) or :autocorrect
+            path: "/path/to/lint",                 # Specify path to lint (optional)
             output_file: "swiftlint.result.json", # The path of the output file (optional)
             config_file: ".swiftlint-ci.yml",     # The path of the configuration file (optional)
             files: [                              # List of files to process (optional)

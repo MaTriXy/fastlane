@@ -1,3 +1,5 @@
+require_relative 'helper'
+
 module FastlaneCore
   class KeychainImporter
     def self.import_file(path, keychain_path, keychain_password: "", certificate_password: "", output: FastlaneCore::Globals.verbose?)
@@ -13,10 +15,10 @@ module FastlaneCore
 
       # When security supports partition lists, also add the partition IDs
       # See https://openradar.appspot.com/28524119
-      if `security -h | grep set-key-partition-list`.length > 0
+      if Helper.backticks('security -h | grep set-key-partition-list', print: false).length > 0
         command = "security set-key-partition-list"
         command << " -S apple-tool:,apple:"
-        command << " -k \"#{keychain_password}\""
+        command << " -k #{keychain_password.to_s.shellescape}"
         command << " #{keychain_path.shellescape}"
         command << " &> /dev/null" unless output
 

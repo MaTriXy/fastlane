@@ -1,3 +1,8 @@
+require_relative '../du/upload_file'
+require_relative 'iap_status'
+require_relative 'iap_type'
+require_relative 'tunes_base'
+
 module Spaceship
   module Tunes
     class IAPDetail < TunesBase
@@ -33,6 +38,10 @@ module Spaceship
       # @return (Hash) subscription pricing target
       attr_accessor :subscription_price_target
 
+      # @return (Hash) Relevant only for recurring subscriptions. Holds pricing related data, such
+      # as subscription pricing, intro offers, etc.
+      attr_accessor :raw_pricing_data
+
       attr_mapping({
         'adamId' => :purchase_id,
         'referenceName.value' => :reference_name,
@@ -43,9 +52,12 @@ module Spaceship
         'clearedForSale.value' => :cleared_for_sale
       })
 
-      class << self
-        def factory(attrs)
-          return self.new(attrs)
+      def setup
+        @raw_pricing_data = @raw_data["pricingData"]
+        @raw_data.delete("pricingData")
+
+        if @raw_pricing_data
+          @raw_data.set(["pricingIntervals"], @raw_pricing_data["subscriptions"])
         end
       end
 
@@ -70,6 +82,44 @@ module Spaceship
         return parsed_versions
       end
 
+      # transforms user-set versions to iTC ones
+      def versions=(value = {})
+        if value.kind_of?(Array)
+          # input that comes from iTC api
+          return
+        end
+        new_versions = []
+        value.each do |language, current_version|
+          new_versions << {
+            "value" =>   {
+              "name" =>  { "value" => current_version[:name] },
+              "description" =>  { "value" => current_version[:description] },
+              "localeCode" =>  language.to_s
+            }
+          }
+        end
+
+        raw_data.set(["versions"], [{ reviewNotes: { value: @review_notes }, "contentHosting" => raw_data['versions'].first['contentHosting'], "details" => { "value" => new_versions }, "id" => raw_data["versions"].first["id"], "reviewScreenshot" => { "value" => review_screenshot } }])
+      end
+
+      # transforms user-set intervals to iTC ones
+      def pricing_intervals=(value = [])
+        new_intervals = []
+        value.each do |current_interval|
+          new_intervals << {
+            "value" =>   {
+              "tierStem" =>  current_interval[:tier],
+              "priceTierEndDate" =>  current_interval[:end_date],
+              "priceTierEffectiveDate" =>  current_interval[:begin_date],
+              "grandfathered" =>  current_interval[:grandfathered],
+              "country" => current_interval[:country]
+            }
+          }
+        end
+        raw_data.set(["pricingIntervals"], new_intervals)
+        @raw_pricing_data["subscriptions"] = new_intervals if @raw_pricing_data
+      end
+
       # @return (Array) pricing intervals
       # @example:
       #  [
@@ -81,9 +131,8 @@ module Spaceship
       #    }
       #  ]
       def pricing_intervals
-        parsed_intervals = []
-        raw_data["pricingIntervals"].each do |interval|
-          parsed_intervals << {
+        @pricing_intervals ||= (raw_data["pricingIntervals"] || []).map do |interval|
+          {
             tier: interval["value"]["tierStem"].to_i,
             begin_date: interval["value"]["priceTierEffectiveDate"],
             end_date: interval["value"]["priceTierEndDate"],
@@ -91,7 +140,6 @@ module Spaceship
             country: interval["value"]["country"]
           }
         end
-        return parsed_intervals
       end
 
       # @return (String) Human Readable type of the purchase
@@ -104,32 +152,38 @@ module Spaceship
         Tunes::IAPStatus.get_from_string(raw_data["versions"].first["status"])
       end
 
+      # @return (Hash) Hash containing existing review screenshot data
+      def review_screenshot
+        return nil unless raw_data && raw_data["versions"] && raw_data["versions"].first && raw_data["versions"].first["reviewScreenshot"] && raw_data['versions'].first["reviewScreenshot"]["value"]
+        raw_data['versions'].first['reviewScreenshot']['value']
+      end
+
       # Saves the current In-App-Purchase
       def save!
         # Transform localization versions back to original format.
         versions_array = []
         versions.each do |language, value|
           versions_array << {
-                    value: {
-                      description: { value: value[:description] },
-                      name: { value: value[:name] },
-                      localeCode: language.to_s
+                    "value" =>  {
+                      "description" => { "value" => value[:description] },
+                      "name" => { "value" => value[:name] },
+                      "localeCode" => language.to_s
                     }
           }
         end
 
-        raw_data.set(["versions"], [{ reviewNotes: @review_notes, details: { value: versions_array } }])
+        raw_data.set(["versions"], [{ reviewNotes: { value: @review_notes }, contentHosting: raw_data['versions'].first['contentHosting'], "details" => { "value" => versions_array }, id: raw_data["versions"].first["id"], reviewScreenshot: { "value" => review_screenshot } }])
 
         # transform pricingDetails
         intervals_array = []
         pricing_intervals.each do |interval|
           intervals_array << {
-            value: {
-              tierStem: interval[:tier],
-              priceTierEffectiveDate: interval[:begin_date],
-              priceTierEndDate: interval[:end_date],
-              country: interval[:country] || "WW",
-              grandfathered: interval[:grandfathered]
+            "value" =>  {
+              "tierStem" =>  interval[:tier],
+              "priceTierEffectiveDate" =>  interval[:begin_date],
+              "priceTierEndDate" =>  interval[:end_date],
+              "country" =>  interval[:country] || "WW",
+              "grandfathered" =>  interval[:grandfathered]
             }
           }
         end
@@ -155,30 +209,69 @@ module Spaceship
 
         if @review_screenshot
           # Upload Screenshot
-          upload_file = UploadFile.from_path @review_screenshot
+          upload_file = UploadFile.from_path(@review_screenshot)
           screenshot_data = client.upload_purchase_review_screenshot(application.apple_id, upload_file)
-          new_screenshot = {
-            "value" => {
-              "assetToken" => screenshot_data["token"],
-              "sortOrder" => 0,
-              "type" => "SortedScreenShot",
-              "originalFileName" => upload_file.file_name,
-              "size" => screenshot_data["length"],
-              "height" => screenshot_data["height"],
-              "width" => screenshot_data["width"],
-              "checksum" => screenshot_data["md5"]
-            }
-          }
-
-          raw_data["versions"][0]["reviewScreenshot"] = new_screenshot
+          raw_data["versions"][0]["reviewScreenshot"] = screenshot_data
         end
         # Update the Purchase
         client.update_iap!(app_id: application.apple_id, purchase_id: self.purchase_id, data: raw_data)
+
+        # Update pricing for a recurring subscription.
+        if raw_data["addOnType"] == Spaceship::Tunes::IAPType::RECURRING
+          client.update_recurring_iap_pricing!(app_id: application.apple_id, purchase_id: self.purchase_id,
+                                               pricing_intervals: raw_data["pricingIntervals"])
+        end
       end
 
       # Deletes In-App-Purchase
       def delete!
         client.delete_iap!(app_id: application.apple_id, purchase_id: self.purchase_id)
+      end
+
+      # Retrieves the actual prices for an iap.
+      #
+      # @return ([]) An empty array
+      #   if the iap is not yet cleared for sale
+      # @return ([Spaceship::Tunes::PricingInfo]) An array of pricing infos from the same pricing tier
+      #   if the iap uses world wide pricing
+      # @return ([Spaceship::Tunes::IAPSubscriptionPricingInfo]) An array of pricing infos from multple subscription pricing tiers
+      #   if the iap uses territorial pricing
+      def pricing_info
+        return [] unless cleared_for_sale
+        return world_wide_pricing_info if world_wide_pricing?
+        territorial_pricing_info
+      end
+
+      private
+
+      # Checks wheather an iap uses world wide or territorial pricing.
+      #
+      # @return (true, false)
+      def world_wide_pricing?
+        pricing_intervals.fetch(0, {})[:country] == "WW"
+      end
+
+      # Maps a single pricing interval to pricing infos.
+      #
+      # @return ([Spaceship::Tunes::PricingInfo]) An array of pricing infos from the same tier
+      def world_wide_pricing_info
+        client
+          .pricing_tiers
+          .find { |p| p.tier_stem == pricing_intervals.first[:tier].to_s }
+          .pricing_info
+      end
+
+      # Maps pricing intervals to their respective subscription pricing infos.
+      #
+      # @return ([Spaceship::Tunes::IAPSubscriptionPricingInfo]) An array of subscription pricing infos
+      def territorial_pricing_info
+        pricing_matrix = client.subscription_pricing_tiers(application.apple_id)
+        pricing_intervals.map do |interval|
+          pricing_matrix
+            .find { |p| p.tier_stem == interval[:tier].to_s }
+            .pricing_info
+            .find { |i| i.country_code == interval[:country] }
+        end
       end
     end
   end

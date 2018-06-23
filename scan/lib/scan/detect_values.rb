@@ -1,3 +1,7 @@
+require 'fastlane_core/device_manager'
+require 'fastlane_core/project'
+require_relative 'module'
+
 module Scan
   # This class detects all kinds of default values
   class DetectValues
@@ -8,6 +12,8 @@ module Scan
 
       # First, try loading the Scanfile from the current directory
       config.load_configuration_file(Scan.scanfile_name)
+
+      prevalidate
 
       # Detect the project
       FastlaneCore::Project.detect_projects(config)
@@ -40,6 +46,14 @@ module Scan
       coerce_to_array_of_strings(:skip_testing)
 
       return config
+    end
+
+    def self.prevalidate
+      output_types = Scan.config[:output_types]
+      has_multiple_report_types = output_types && output_types.split(',').size > 1
+      if has_multiple_report_types && Scan.config[:custom_report_file_name]
+        UI.user_error!("Using a :custom_report_file_name with multiple :output_types (#{output_types}) will lead to unexpected results. Use :output_files instead.")
+      end
     end
 
     def self.coerce_to_array_of_strings(config_key)
@@ -153,7 +167,7 @@ module Scan
       end
 
       default = lambda do
-        UI.error("Couldn't find any matching simulators for '#{devices}' - falling back to default simulator")
+        UI.error("Couldn't find any matching simulators for '#{devices}' - falling back to default simulator") if (devices || []).count > 0
 
         result = Array(
           simulators
@@ -163,7 +177,7 @@ module Scan
             .last || simulators.first
         )
 
-        UI.error("Found simulator \"#{result.first.name} (#{result.first.os_version})\"") if result.first
+        UI.message("Found simulator \"#{result.first.name} (#{result.first.os_version})\"") if result.first
 
         result
       end
@@ -176,7 +190,7 @@ module Scan
     end
 
     def self.min_xcode8?
-      Helper.xcode_version.split(".").first.to_i >= 8
+      Helper.xcode_at_least?("8.0")
     end
 
     def self.detect_destination

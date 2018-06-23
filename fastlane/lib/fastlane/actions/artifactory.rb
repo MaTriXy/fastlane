@@ -1,12 +1,17 @@
 module Fastlane
   module Actions
+    module SharedValues
+      ARTIFACTORY_DOWNLOAD_URL = :ARTIFACTORY_DOWNLOAD_URL
+      ARTIFACTORY_DOWNLOAD_SIZE = :ARTIFACTORY_DOWNLOAD_SIZE
+    end
+
     class ArtifactoryAction < Action
       def self.run(params)
         Actions.verify_gem!('artifactory')
 
         require 'artifactory'
         file_path = File.absolute_path(params[:file])
-        if File.exist? file_path
+        if File.exist?(file_path)
           client = connect_to_artifactory(params)
           artifact = Artifactory::Resource::Artifact.new
           artifact.client = client
@@ -17,6 +22,10 @@ module Fastlane
           }
           UI.message("Uploading file: #{artifact.local_path} ...")
           upload = artifact.upload(params[:repo], params[:repo_path], params[:properties])
+
+          Actions.lane_context[SharedValues::ARTIFACTORY_DOWNLOAD_URL] = upload.uri
+          Actions.lane_context[SharedValues::ARTIFACTORY_DOWNLOAD_SIZE] = upload.size
+
           UI.message("Uploaded Artifact:")
           UI.message("Repo: #{upload.repo}")
           UI.message("URI: #{upload.uri}")
@@ -30,7 +39,7 @@ module Fastlane
       def self.connect_to_artifactory(params)
         config_keys = [:endpoint, :username, :password, :ssl_pem_file, :ssl_verify, :proxy_username, :proxy_password, :proxy_address, :proxy_port]
         config = params.values.select do |key|
-          config_keys.include? key
+          config_keys.include?(key)
         end
         Artifactory::Client.new(config)
       end
@@ -44,7 +53,14 @@ module Fastlane
       end
 
       def self.author
-        ["koglinjg"]
+        ["koglinjg", "tommeier"]
+      end
+
+      def self.output
+        [
+          ['ARTIFACTORY_DOWNLOAD_URL', 'The download url for file uploaded'],
+          ['ARTIFACTORY_DOWNLOAD_SIZE', 'The reported file size for file uploaded']
+        ]
       end
 
       def self.example_code
@@ -105,6 +121,7 @@ module Fastlane
           FastlaneCore::ConfigItem.new(key: :ssl_verify,
                                        env_name: "FL_ARTIFACTORY_SSL_VERIFY",
                                        description: "Verify SSL",
+                                       is_string: false,
                                        default_value: true,
                                        optional: true),
           FastlaneCore::ConfigItem.new(key: :proxy_username,

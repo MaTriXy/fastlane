@@ -1,5 +1,7 @@
-require "fastlane_core"
-require "credentials_manager"
+require 'fastlane_core/configuration/config_item'
+require 'credentials_manager/appfile_config'
+
+require_relative 'module'
 
 module Pilot
   class Options
@@ -12,36 +14,43 @@ module Pilot
                                      short_option: "-u",
                                      env_name: "PILOT_USERNAME",
                                      description: "Your Apple ID Username",
-                                     default_value: user),
+                                     default_value: user,
+                                     default_value_dynamic: true),
         FastlaneCore::ConfigItem.new(key: :app_identifier,
                                      short_option: "-a",
                                      env_name: "PILOT_APP_IDENTIFIER",
                                      description: "The bundle identifier of the app to upload or manage testers (optional)",
                                      optional: true,
-                                     default_value: ENV["TESTFLIGHT_APP_IDENTITIFER"] || CredentialsManager::AppfileConfig.try_fetch_value(:app_identifier)),
+                                     code_gen_sensitive: true,
+                                     default_value: ENV["TESTFLIGHT_APP_IDENTITIFER"] || CredentialsManager::AppfileConfig.try_fetch_value(:app_identifier),
+                                     default_value_dynamic: true),
         FastlaneCore::ConfigItem.new(key: :app_platform,
                                      short_option: "-m",
                                      env_name: "PILOT_PLATFORM",
                                      description: "The platform to use (optional)",
                                      optional: true,
+                                     default_value: 'ios',
                                      verify_block: proc do |value|
-                                       UI.user_error!("The platform can only be ios, appletvos, or osx") unless ['ios', 'appletvos', 'osx'].include? value
+                                       UI.user_error!("The platform can only be ios, appletvos, or osx") unless ['ios', 'appletvos', 'osx'].include?(value)
                                      end),
         FastlaneCore::ConfigItem.new(key: :ipa,
                                      short_option: "-i",
                                      optional: true,
                                      env_name: "PILOT_IPA",
                                      description: "Path to the ipa file to upload",
-                                     default_value: Dir["*.ipa"].first,
+                                     code_gen_sensitive: true,
+                                     default_value: Dir["*.ipa"].sort_by { |x| File.mtime(x) }.last,
+                                     default_value_dynamic: true,
                                      verify_block: proc do |value|
-                                       UI.user_error!("Could not find ipa file at path '#{value}'") unless File.exist? value
-                                       UI.user_error!("'#{value}' doesn't seem to be an ipa file") unless value.end_with? ".ipa"
+                                       value = File.expand_path(value)
+                                       UI.user_error!("Could not find ipa file at path '#{value}'") unless File.exist?(value)
+                                       UI.user_error!("'#{value}' doesn't seem to be an ipa file") unless value.end_with?(".ipa")
                                      end),
         FastlaneCore::ConfigItem.new(key: :changelog,
                                      short_option: "-w",
                                      optional: true,
                                      env_name: "PILOT_CHANGELOG",
-                                     description: "Provide the what's new text when uploading a new build"),
+                                     description: "Provide the 'what's new' text when uploading a new build"),
         FastlaneCore::ConfigItem.new(key: :beta_app_description,
                                      short_option: "-d",
                                      optional: true,
@@ -61,13 +70,14 @@ module Pilot
         FastlaneCore::ConfigItem.new(key: :skip_waiting_for_build_processing,
                                      short_option: "-z",
                                      env_name: "PILOT_SKIP_WAITING_FOR_BUILD_PROCESSING",
-                                     description: "Don't wait for the build to process. If set to true, the changelog won't be set, `distribute_external` option won't work",
+                                     description: "Don't wait for the build to process. If set to true, the changelog won't be set, `distribute_external` option won't work and no build will be distributed to testers",
                                      is_string: false,
                                      default_value: false),
         FastlaneCore::ConfigItem.new(key: :update_build_info_on_upload,
+                                     deprecated: true,
                                      short_option: "-x",
                                      env_name: "PILOT_UPDATE_BUILD_INFO_ON_UPLOAD",
-                                     description: "Update build info immediately after validation. This will set the changelog even if PILOT_SKIP_SUBMISSION is set, but will have no effect if PILOT_SKIP_WAITING_FOR_BUILD_PROCESSING is set",
+                                     description: "Update build info immediately after validation. This is deprecated and will be removed in a future release. iTunesConnect no longer supports setting build info until after build processing has completed, which is when build info is updated by default",
                                      is_string: false,
                                      default_value: false),
         FastlaneCore::ConfigItem.new(key: :apple_id,
@@ -75,11 +85,23 @@ module Pilot
                                      env_name: "PILOT_APPLE_ID",
                                      description: "The unique App ID provided by iTunes Connect",
                                      optional: true,
-                                     default_value: ENV["TESTFLIGHT_APPLE_ID"]),
+                                     code_gen_sensitive: true,
+                                     default_value: ENV["TESTFLIGHT_APPLE_ID"],
+                                     default_value_dynamic: true),
         FastlaneCore::ConfigItem.new(key: :distribute_external,
                                      is_string: false,
                                      env_name: "PILOT_DISTRIBUTE_EXTERNAL",
                                      description: "Should the build be distributed to external testers?",
+                                     default_value: false),
+        FastlaneCore::ConfigItem.new(key: :notify_external_testers,
+                                    is_string: false,
+                                    env_name: "PILOT_NOTIFY_EXTERNAL_TESTERS",
+                                    description: "Should notify external testers?",
+                                    default_value: true),
+        FastlaneCore::ConfigItem.new(key: :demo_account_required,
+                                     is_string: false,
+                                     env_name: "DEMO_ACCOUNT_REQUIRED",
+                                     description: "Do you need a demo account when Apple does review?",
                                      default_value: false),
         FastlaneCore::ConfigItem.new(key: :first_name,
                                      short_option: "-f",
@@ -97,7 +119,7 @@ module Pilot
                                      description: "The tester's email",
                                      optional: true,
                                      verify_block: proc do |value|
-                                       UI.user_error!("Please pass a valid email address") unless value.include? "@"
+                                       UI.user_error!("Please pass a valid email address") unless value.include?("@")
                                      end),
         FastlaneCore::ConfigItem.new(key: :testers_file_path,
                                      short_option: "-c",
@@ -120,7 +142,9 @@ module Pilot
                                      description: "The ID of your iTunes Connect team if you're in multiple teams",
                                      optional: true,
                                      is_string: false, # as we also allow integers, which we convert to strings anyway
+                                     code_gen_sensitive: true,
                                      default_value: CredentialsManager::AppfileConfig.try_fetch_value(:itc_team_id),
+                                     default_value_dynamic: true,
                                      verify_block: proc do |value|
                                        ENV["FASTLANE_ITC_TEAM_ID"] = value.to_s
                                      end),
@@ -129,7 +153,9 @@ module Pilot
                                      env_name: "PILOT_TEAM_NAME",
                                      description: "The name of your iTunes Connect team if you're in multiple teams",
                                      optional: true,
+                                     code_gen_sensitive: true,
                                      default_value: CredentialsManager::AppfileConfig.try_fetch_value(:itc_team_name),
+                                     default_value_dynamic: true,
                                      verify_block: proc do |value|
                                        ENV["FASTLANE_ITC_TEAM_NAME"] = value.to_s
                                      end),
@@ -138,23 +164,38 @@ module Pilot
                                      description: "The short ID of your team in the developer portal, if you're in multiple teams. Different from your iTC team ID!",
                                      optional: true,
                                      is_string: true,
+                                     code_gen_sensitive: true,
                                      default_value: CredentialsManager::AppfileConfig.try_fetch_value(:team_id),
+                                     default_value_dynamic: true,
                                      verify_block: proc do |value|
                                        ENV["FASTLANE_TEAM_ID"] = value.to_s
                                      end),
+        # rubocop:disable Metrics/LineLength
         FastlaneCore::ConfigItem.new(key: :itc_provider,
                                      env_name: "PILOT_ITC_PROVIDER",
-                                     description: "The provider short name to be used with the iTMSTransporter to identify your team",
+                                     description: "The provider short name to be used with the iTMSTransporter to identify your team. To get provider short name run `pathToXcode.app/Contents/Applications/Application\\ Loader.app/Contents/itms/bin/iTMSTransporter -m provider -u 'USERNAME' -p 'PASSWORD' -account_type itunes_connect -v off`. The short names of providers should be listed in the second column",
                                      optional: true),
+        # rubocop:enable Metrics/LineLength
         FastlaneCore::ConfigItem.new(key: :groups,
                                      short_option: "-g",
                                      env_name: "PILOT_GROUPS",
-                                     description: "Associate tester to one group or more by group name / group id. E.g. '-g \"Team 1\",\"Team 2\"'",
+                                     description: "Associate tester to one group or more by group name / group id. E.g. `-g \"Team 1\",\"Team 2\"`",
                                      optional: true,
                                      type: Array,
                                      verify_block: proc do |value|
                                        UI.user_error!("Could not evaluate array from '#{value}'") unless value.kind_of?(Array)
-                                     end)
+                                     end),
+        FastlaneCore::ConfigItem.new(key: :wait_for_uploaded_build,
+                                     env_name: "PILOT_WAIT_FOR_UPLOADED_BUILD",
+                                     description: "Use version info from uploaded ipa file to determine what build to use for distribution. If set to false, latest processing or any latest build will be used",
+                                     is_string: false,
+                                     default_value: false),
+        FastlaneCore::ConfigItem.new(key: :reject_build_waiting_for_review,
+                                     short_option: "-b",
+                                     env_name: "PILOT_REJECT_PREVIOUS_BUILD",
+                                     description: "Expire previous if it's 'waiting for review'",
+                                     is_string: false,
+                                     default_value: false)
       ]
     end
   end

@@ -8,7 +8,8 @@ module Fastlane
         env_info.gsub!(sensitive_element, "#########")
       end
 
-      puts env_info
+      puts(env_info)
+      UI.important("Take notice that this output may contain sensitive information, or simply information that you don't want to make public.")
       if FastlaneCore::Helper.mac? && UI.interactive? && UI.confirm("🙄  Wow, that's a lot of markdown text... should fastlane put it into your clipboard, so you can easily paste it on GitHub?")
         copy_to_clipboard(env_info)
         UI.success("Successfully copied markdown into your clipboard 🎨")
@@ -62,21 +63,20 @@ module Fastlane
         table << "|--------|---------|\n"
         plugin_manager.available_plugins.each do |plugin|
           begin
-          installed_version = Fastlane::ActionCollector.determine_version(plugin)
-          update_url = FastlaneCore::UpdateChecker.generate_fetch_url(plugin)
-          latest_version = FastlaneCore::UpdateChecker.fetch_latest(update_url)
-          if Gem::Version.new(installed_version) == Gem::Version.new(latest_version)
-            update_status = "✅ Up-To-Date"
-          else
-            update_status = "🚫 Update available"
+            installed_version = Fastlane::ActionCollector.determine_version(plugin)
+            latest_version = FastlaneCore::UpdateChecker.fetch_latest(plugin)
+            if Gem::Version.new(installed_version) == Gem::Version.new(latest_version)
+              update_status = "✅ Up-To-Date"
+            else
+              update_status = "🚫 Update available"
+            end
+          rescue
+            update_status = "💥 Check failed"
           end
-        rescue
-          update_status = "💥 Check failed"
-        end
           table << "| #{plugin} | #{installed_version} | #{update_status} |\n"
         end
 
-        rendered_table = MarkdownTableFormatter.new table
+        rendered_table = MarkdownTableFormatter.new(table)
         env_output << rendered_table.to_md
       end
 
@@ -107,9 +107,8 @@ module Fastlane
 
         next unless fastlane_tools.include?(current_gem.name.to_sym)
         begin
-          update_url = FastlaneCore::UpdateChecker.generate_fetch_url(current_gem.name)
-          latest_version = FastlaneCore::UpdateChecker.fetch_latest(update_url)
-          if Gem::Version.new(current_gem.version) == Gem::Version.new(latest_version)
+          latest_version = FastlaneCore::UpdateChecker.fetch_latest(current_gem.name)
+          if Gem::Version.new(current_gem.version) >= Gem::Version.new(latest_version)
             update_status = "✅ Up-To-Date"
           else
             update_status = "🚫 Update available"
@@ -120,7 +119,7 @@ module Fastlane
         table << "| #{current_gem.name} | #{current_gem.version} | #{update_status} |\n"
       end
 
-      rendered_table = MarkdownTableFormatter.new table
+      rendered_table = MarkdownTableFormatter.new(table)
       env_output << rendered_table.to_md
 
       env_output << "\n\n"
@@ -139,7 +138,7 @@ module Fastlane
           table << "| #{current_gem.name} | #{current_gem.version} |\n"
         end
       end
-      rendered_table = MarkdownTableFormatter.new table
+      rendered_table = MarkdownTableFormatter.new(table)
 
       env_output << rendered_table.to_md
       env_output << "</details>\n\n"
@@ -170,7 +169,7 @@ module Fastlane
         table << "|-----|---------|----|\n"
         table << env_table
       end
-      rendered_table = MarkdownTableFormatter.new table
+      rendered_table = MarkdownTableFormatter.new(table)
       env_output << rendered_table.to_md
       env_output << "\n\n"
     end
@@ -259,8 +258,8 @@ module Fastlane
         env_output << "<summary>`#{fastlane_path}`</summary>\n"
         env_output << "\n"
         env_output << "```ruby\n"
-        env_output <<  File.read(fastlane_path)
-        env_output <<  "```\n"
+        env_output <<  File.read(fastlane_path, encoding: "utf-8")
+        env_output <<  "\n```\n"
         env_output << "</details>"
       else
         env_output << "**No Fastfile found**\n"
@@ -273,8 +272,8 @@ module Fastlane
         env_output << "<summary>`#{appfile_path}`</summary>\n"
         env_output << "\n"
         env_output << "```ruby\n"
-        env_output <<  File.read(appfile_path)
-        env_output <<  "```\n"
+        env_output <<  File.read(appfile_path, encoding: "utf-8")
+        env_output <<  "\n```\n"
         env_output << "</details>"
       else
         env_output << "**No Appfile found**\n"

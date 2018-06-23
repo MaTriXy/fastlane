@@ -1,6 +1,12 @@
 require "commander"
-require "pilot/options"
-require "fastlane_core"
+
+require 'fastlane_core/configuration/configuration'
+require_relative 'module'
+require_relative 'tester_importer'
+require_relative 'tester_exporter'
+require_relative 'tester_manager'
+require_relative 'build_manager'
+require_relative 'options'
 
 HighLine.track_eof = false
 
@@ -20,7 +26,7 @@ module Pilot
 
     def handle_multiple(action, args, options)
       mgr = Pilot::TesterManager.new
-      config = FastlaneCore::Configuration.create(Pilot::Options.available_options, convert_options(options))
+      config = create_config(options)
       args.push(config[:email]) if config[:email] && args.empty?
       args.push(UI.input("Email address of the tester: ")) if args.empty?
       failures = []
@@ -29,7 +35,8 @@ module Pilot
         begin
           mgr.public_send(action, config)
         rescue => ex
-          message = "[#{address}]: #{ex}"
+          # no need to show the email address in the message if only one specified
+          message = (args.count > 1) ? "[#{address}]: #{ex}" : ex
           failures << message
           UI.error(message)
         end
@@ -43,7 +50,7 @@ module Pilot
       program :description, Pilot::DESCRIPTION
       program :help, "Author", "Felix Krause <pilot@krausefx.com>"
       program :help, "Website", "https://fastlane.tools"
-      program :help, "GitHub", "https://github.com/fastlane/fastlane/tree/master/pilot"
+      program :help, "Documentation", "https://docs.fastlane.tools/actions/pilot/"
       program :help_formatter, :compact
 
       global_option("--verbose") { FastlaneCore::Globals.verbose = true }
@@ -55,7 +62,7 @@ module Pilot
         FastlaneCore::CommanderGenerator.new.generate(Pilot::Options.available_options, command: c)
 
         c.action do |args, options|
-          config = FastlaneCore::Configuration.create(Pilot::Options.available_options, convert_options(options))
+          config = create_config(options)
           Pilot::BuildManager.new.upload(config)
         end
       end
@@ -67,7 +74,7 @@ module Pilot
         FastlaneCore::CommanderGenerator.new.generate(Pilot::Options.available_options, command: c)
 
         c.action do |args, options|
-          config = FastlaneCore::Configuration.create(Pilot::Options.available_options, convert_options(options))
+          config = create_config(options)
           Pilot::BuildManager.new.distribute(config)
         end
       end
@@ -79,7 +86,7 @@ module Pilot
         FastlaneCore::CommanderGenerator.new.generate(Pilot::Options.available_options, command: c)
 
         c.action do |args, options|
-          config = FastlaneCore::Configuration.create(Pilot::Options.available_options, convert_options(options))
+          config = create_config(options)
           Pilot::BuildManager.new.list(config)
         end
       end
@@ -102,7 +109,8 @@ module Pilot
         FastlaneCore::CommanderGenerator.new.generate(Pilot::Options.available_options, command: c)
 
         c.action do |args, options|
-          config = FastlaneCore::Configuration.create(Pilot::Options.available_options, convert_options(options))
+          config = create_config(options)
+          UI.user_error!("You must include an `app_identifier` to list testers") unless config[:app_identifier]
           Pilot::TesterManager.new.list_testers(config)
         end
       end
@@ -136,26 +144,31 @@ module Pilot
         FastlaneCore::CommanderGenerator.new.generate(Pilot::Options.available_options, command: c)
 
         c.action do |args, options|
-          config = FastlaneCore::Configuration.create(Pilot::Options.available_options, convert_options(options))
+          config = create_config(options)
           Pilot::TesterExporter.new.export_testers(config)
         end
       end
 
       command :import do |c|
         c.syntax = "fastlane pilot import"
-        c.description = "Create external testers from a CSV file"
+        c.description = "Import external testers from a CSV file called testers.csv"
 
         FastlaneCore::CommanderGenerator.new.generate(Pilot::Options.available_options, command: c)
 
         c.action do |args, options|
-          config = FastlaneCore::Configuration.create(Pilot::Options.available_options, convert_options(options))
+          config = create_config(options)
           Pilot::TesterImporter.new.import_testers(config)
         end
       end
 
-      default_command :help
+      default_command(:help)
 
       run!
+    end
+
+    def create_config(options)
+      config = FastlaneCore::Configuration.create(Pilot::Options.available_options, convert_options(options))
+      return config
     end
   end
 end

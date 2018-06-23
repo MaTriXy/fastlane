@@ -11,9 +11,16 @@ module Fastlane
 
         danger_id = params[:danger_id]
         dangerfile = params[:dangerfile]
+        base = params[:base]
+        head = params[:head]
+        pr = params[:pr]
         cmd << "--danger_id=#{danger_id}" if danger_id
         cmd << "--dangerfile=#{dangerfile}" if dangerfile
         cmd << "--fail-on-errors=true" if params[:fail_on_errors]
+        cmd << "--new-comment" if params[:new_comment]
+        cmd << "--base=#{base}" if base
+        cmd << "--head=#{head}" if head
+        cmd << "pr #{pr}" if pr
 
         ENV['DANGER_GITHUB_API_TOKEN'] = params[:github_api_token] if params[:github_api_token]
 
@@ -27,7 +34,7 @@ module Fastlane
       def self.details
         [
           "Formalize your Pull Request etiquette.",
-          "More information: https://github.com/danger/danger"
+          "More information: [https://github.com/danger/danger](https://github.com/danger/danger)."
         ].join("\n")
       end
 
@@ -64,7 +71,28 @@ module Fastlane
                                        description: "Should always fail the build process, defaults to false",
                                        is_string: false,
                                        optional: true,
-                                       default_value: false)
+                                       default_value: false),
+          FastlaneCore::ConfigItem.new(key: :new_comment,
+                                       env_name: "FL_DANGER_NEW_COMMENT",
+                                       description: "Makes Danger post a new comment instead of editing its previous one",
+                                       is_string: false,
+                                       optional: true,
+                                       default_value: false),
+          FastlaneCore::ConfigItem.new(key: :base,
+                                       env_name: "FL_DANGER_BASE",
+                                       description: "A branch/tag/commit to use as the base of the diff. [master|dev|stable]",
+                                       is_string: true,
+                                       optional: true),
+          FastlaneCore::ConfigItem.new(key: :head,
+                                       env_name: "FL_DANGER_HEAD",
+                                       description: "A branch/tag/commit to use as the head. [master|dev|stable]",
+                                       is_string: true,
+                                       optional: true),
+          FastlaneCore::ConfigItem.new(key: :pr,
+                                       env_name: "FL_DANGER_PR",
+                                       description: "Run danger on a specific pull request. e.g. \"https://github.com/danger/danger/pull/518\"",
+                                       is_string: true,
+                                       optional: true)
         ]
       end
 

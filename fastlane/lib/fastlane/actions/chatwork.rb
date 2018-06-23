@@ -10,7 +10,7 @@ module Fastlane
 
         emoticon = (options[:success] ? '(dance)' : ';(')
 
-        uri = URI.parse("https://api.chatwork.com/v1/rooms/#{options[:roomid]}/messages")
+        uri = URI.parse("https://api.chatwork.com/v2/rooms/#{options[:roomid]}/messages")
         https = Net::HTTP.new(uri.host, uri.port)
         https.use_ssl = true
 
@@ -72,7 +72,7 @@ module Fastlane
       end
 
       def self.details
-        "Information on how to obtain an API token: http://developer.chatwork.com/ja/authenticate.html"
+        "Information on how to obtain an API token: [http://developer.chatwork.com/ja/authenticate.html](http://developer.chatwork.com/ja/authenticate.html)"
       end
 
       def self.example_code

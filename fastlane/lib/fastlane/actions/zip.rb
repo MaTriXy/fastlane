@@ -2,18 +2,28 @@ module Fastlane
   module Actions
     class ZipAction < Action
       def self.run(params)
-        UI.message "Compressing #{params[:path]}..."
+        UI.message("Compressing #{params[:path]}...")
 
-        params[:output_path] ||= "#{params[:path]}.zip"
+        params[:output_path] ||= params[:path]
+
+        absolute_output_path = File.expand_path(params[:output_path])
+
+        # Appends ".zip" if path does not end in ".zip"
+        unless absolute_output_path.end_with?(".zip")
+          absolute_output_path += ".zip"
+        end
+
+        absolute_output_dir = File.expand_path("..", absolute_output_path)
+        FileUtils.mkdir_p(absolute_output_dir)
 
         Dir.chdir(File.expand_path("..", params[:path])) do # required to properly zip
           zip_options = params[:verbose] ? "r" : "rq"
 
-          Actions.sh "zip -#{zip_options} #{params[:output_path].shellescape} #{File.basename(params[:path]).shellescape}"
+          Actions.sh("zip -#{zip_options} #{absolute_output_path.shellescape} #{File.basename(params[:path]).shellescape}")
         end
 
-        UI.success "Successfully generated zip file at path '#{File.expand_path(params[:output_path])}'"
-        return File.expand_path(params[:output_path])
+        UI.success("Successfully generated zip file at path '#{File.expand_path(absolute_output_path)}'")
+        return File.expand_path(absolute_output_path)
       end
 
       #####################################################
@@ -22,9 +32,6 @@ module Fastlane
 
       def self.description
         "Compress a file or folder to a zip"
-      end
-
-      def self.details
       end
 
       def self.available_options
@@ -43,6 +50,7 @@ module Fastlane
                                        env_name: "FL_ZIP_VERBOSE",
                                        description: "Enable verbose output of zipped file",
                                        default_value: true,
+                                       type: Boolean,
                                        optional: true)
         ]
       end
@@ -72,6 +80,10 @@ module Fastlane
 
       def self.return_value
         "The path to the output zip file"
+      end
+
+      def self.return_type
+        :string
       end
 
       def self.authors

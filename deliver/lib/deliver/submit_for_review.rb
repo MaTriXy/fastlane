@@ -1,3 +1,5 @@
+require_relative 'module'
+
 module Deliver
   class SubmitForReview
     def submit!(options)
@@ -31,7 +33,7 @@ module Deliver
       app = options[:app]
       v = app.edit_version
 
-      if options[:build_number] and options[:build_number] != "latest"
+      if options[:build_number] && options[:build_number] != "latest"
         UI.message("Selecting existing build-number: #{options[:build_number]}")
         build = v.candidate_builds.detect { |a| a.build_version == options[:build_number] }
         unless build
@@ -63,22 +65,21 @@ module Deliver
           UI.message("")
           UI.message("You can tweet: \"iTunes Connect #iosprocessingtime #{((Time.now - start) / 60).round} minutes\"")
         end
-        sleep 30
+        sleep(30)
       end
       nil
     end
 
     def find_build(candidate_builds)
-      build = nil
-      candidate_builds.each do |b|
-        if !build or b.upload_date > build.upload_date
-          build = b
-        end
+      if (candidate_builds || []).count == 0
+        UI.user_error!("Could not find any available candidate builds on iTunes Connect to submit")
       end
 
-      unless build
-        UI.error(candidate_builds)
-        UI.crash!("Could not find build")
+      build = candidate_builds.first
+      candidate_builds.each do |b|
+        if b.upload_date > build.upload_date
+          build = b
+        end
       end
 
       return build
