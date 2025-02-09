@@ -9,7 +9,7 @@ module Fastlane
           return
         end
 
-        # no paramter included in the call means treat this like a normal fastlane ruby call
+        # no parameter included in the call means treat this like a normal fastlane ruby call
         UI.message(params.join(' '))
       end
 
@@ -25,9 +25,8 @@ module Fastlane
         [
           FastlaneCore::ConfigItem.new(key: :message,
                                        env_name: "FL_PUTS_MESSAGE",
-                                       description: "Message to be printed out. Fastlane.swift only",
-                                       optional: true,
-                                       is_string: true)
+                                       description: "Message to be printed out",
+                                       optional: true)
         ]
       end
 

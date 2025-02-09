@@ -35,9 +35,8 @@ module Fastlane
           # ensure that the xcodeproj passed in was OK
           UI.user_error!("Could not find the specified xcodeproj: #{xcodeproj_path}") unless File.directory?(xcodeproj_path)
         else
-          all_xcodeproj_paths = Dir[File.expand_path(File.join(repo_path, '**/*.xcodeproj'))]
-          # find an xcodeproj (ignoring the Cocoapods one)
-          xcodeproj_paths = Fastlane::Actions.ignore_cocoapods_path(all_xcodeproj_paths)
+          # find an xcodeproj (ignoring dependencies)
+          xcodeproj_paths = Fastlane::Helper::XcodeprojHelper.find(repo_path)
 
           # no projects found: error
           UI.user_error!('Could not find a .xcodeproj in the current repository\'s working directory.') if xcodeproj_paths.count == 0
@@ -127,11 +126,9 @@ module Fastlane
         Actions.sh("git add #{git_add_paths.map(&:shellescape).join(' ')}")
 
         begin
-          build_number = Actions.lane_context[Actions::SharedValues::BUILD_NUMBER]
+          command = build_git_command(params)
 
-          params[:message] ||= (build_number ? "Version Bump to #{build_number}" : "Version Bump")
-
-          Actions.sh("git commit -m '#{params[:message]}'")
+          Actions.sh(command)
 
           UI.success("Committed \"#{params[:message]}\" 💾.")
         rescue => ex
@@ -142,6 +139,12 @@ module Fastlane
 
       def self.description
         "Creates a 'Version Bump' commit. Run after `increment_build_number`"
+      end
+
+      def self.output
+        [
+          ['MODIFIED_FILES', 'The list of paths of modified files']
+        ]
       end
 
       def self.available_options
@@ -161,25 +164,29 @@ module Fastlane
           FastlaneCore::ConfigItem.new(key: :force,
                                        env_name: "FL_FORCE_COMMIT",
                                        description: "Forces the commit, even if other files than the ones containing the version number have been modified",
+                                       type: Boolean,
                                        optional: true,
-                                       default_value: false,
-                                       is_string: false),
+                                       default_value: false),
           FastlaneCore::ConfigItem.new(key: :settings,
                                        env_name: "FL_COMMIT_INCLUDE_SETTINGS",
                                        description: "Include Settings.bundle/Root.plist with version bump",
+                                       skip_type_validation: true, # allows Boolean, String, Array
                                        optional: true,
-                                       default_value: false,
-                                       is_string: false),
+                                       default_value: false),
           FastlaneCore::ConfigItem.new(key: :ignore,
                                        description: "A regular expression used to filter matched plist files to be modified",
-                                       optional: true,
-                                       default_value: nil,
-                                       is_string: false),
+                                       skip_type_validation: true, # allows Regex
+                                       optional: true),
           FastlaneCore::ConfigItem.new(key: :include,
                                        description: "A list of extra files to be included in the version bump (string array or comma-separated string)",
                                        optional: true,
                                        default_value: [],
-                                       type: Array)
+                                       type: Array),
+          FastlaneCore::ConfigItem.new(key: :no_verify,
+                                      env_name: "FL_GIT_PUSH_USE_NO_VERIFY",
+                                      description: "Whether or not to use --no-verify",
+                                      type: Boolean,
+                                      default_value: false)
         ]
       end
 
@@ -212,7 +219,7 @@ module Fastlane
           'commit_version_bump',
           'commit_version_bump(
             message: "Version Bump",                    # create a commit with a custom message
-            xcodeproj: "./path/to/MyProject.xcodeproj", # optional, if you have multiple Xcode project files, you must specify your main project here
+            xcodeproj: "./path/to/MyProject.xcodeproj"  # optional, if you have multiple Xcode project files, you must specify your main project here
           )',
           'commit_version_bump(
             settings: true # Include Settings.bundle/Root.plist
@@ -228,6 +235,9 @@ module Fastlane
           )',
           'commit_version_bump(
             ignore: /OtherProject/ # ignore files matching a regular expression
+          )',
+          'commit_version_bump(
+            no_verify: true           # optional, default: false
           )'
         ]
       end
@@ -266,6 +276,23 @@ module Fastlane
             Pathname.new(path).relative_path_from(root_pathname).to_s
           end
           return all_modified_files.uniq
+        end
+
+        def build_git_command(params)
+          build_number = Actions.lane_context[Actions::SharedValues::BUILD_NUMBER]
+
+          params[:message] ||= (build_number ? "Version Bump to #{build_number}" : "Version Bump")
+
+          command = [
+            'git',
+            'commit',
+            '-m',
+            "'#{params[:message]}'"
+          ]
+
+          command << '--no-verify' if params[:no_verify]
+
+          return command.join(' ')
         end
       end
     end

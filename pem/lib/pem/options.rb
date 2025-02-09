@@ -1,5 +1,6 @@
 require 'fastlane_core/configuration/config_item'
 require 'credentials_manager/appfile_config'
+require 'fastlane/helper/lane_helper'
 
 require_relative 'module'
 
@@ -10,10 +11,24 @@ module PEM
       user ||= CredentialsManager::AppfileConfig.try_fetch_value(:apple_id)
 
       [
+        FastlaneCore::ConfigItem.new(key: :platform,
+                                     description: "Set certificate's platform. Used for creation of production & development certificates. Supported platforms: ios, macos",
+                                     short_option: "-m",
+                                     env_name: "PEM_PLATFORM",
+                                     default_value: "ios",
+                                     verify_block: proc do |value|
+                                       UI.user_error!("The platform can only be ios or macos") unless ['ios', 'macos'].include?(value)
+                                     end),
         FastlaneCore::ConfigItem.new(key: :development,
                                      env_name: "PEM_DEVELOPMENT",
                                      description: "Renew the development push certificate instead of the production one",
                                      is_string: false,
+                                     default_value: false),
+        FastlaneCore::ConfigItem.new(key: :website_push,
+                                     env_name: "PEM_WEBSITE_PUSH",
+                                     description: "Create a Website Push certificate",
+                                     is_string: false,
+                                     conflicting_options: [:development],
                                      default_value: false),
         FastlaneCore::ConfigItem.new(key: :generate_p12,
                                      env_name: "PEM_GENERATE_P12_FILE",
@@ -80,7 +95,7 @@ module PEM
                                      env_name: "PEM_P12_PASSWORD",
                                      sensitive: true,
                                      description: "The password that is used for your p12 file",
-                                     default_value: ""),
+                                     optional: true),
         FastlaneCore::ConfigItem.new(key: :pem_name,
                                      short_option: "-o",
                                      env_name: "PEM_FILE_NAME",

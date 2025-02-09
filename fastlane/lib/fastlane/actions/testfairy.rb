@@ -2,10 +2,12 @@ module Fastlane
   module Actions
     module SharedValues
       TESTFAIRY_BUILD_URL = :TESTFAIRY_BUILD_URL
+      TESTFAIRY_DOWNLOAD_URL = :TESTFAIRY_DOWNLOAD_URL
+      TESTFAIRY_LANDING_PAGE = :TESTFAIRY_LANDING_PAGE
     end
 
     class TestfairyAction < Action
-      def self.upload_build(upload_url, ipa, options)
+      def self.upload_build(upload_url, ipa, options, timeout)
         require 'faraday'
         require 'faraday_middleware'
 
@@ -29,10 +31,11 @@ module Fastlane
 
         begin
           connection.post do |req|
+            req.options.timeout = timeout
             req.url("/api/upload/")
             req.body = options
           end
-        rescue Faraday::Error::TimeoutError
+        rescue Faraday::TimeoutError
           UI.crash!("Uploading build to TestFairy timed out ⏳")
         end
       end
@@ -66,9 +69,9 @@ module Fastlane
           end
         end
 
-        # Rejecting key `upload_url` as we don't need it in options
+        # Rejecting key `upload_url` and `timeout` as we don't need it in options
         client_options = Hash[params.values.reject do |key, value|
-          key == :upload_url
+          [:upload_url, :timeout].include?(key)
         end.map do |key, value|
           case key
           when :api_key
@@ -91,6 +94,18 @@ module Fastlane
             [key, value]
           when :options
             [key, options_to_client.call(value).join(',')]
+          when :custom
+            [key, value]
+          when :tags
+            [key, value.join(',')]
+          when :folder_name
+            [key, value]
+          when :landing_page_mode
+            [key, value]
+          when :upload_to_saucelabs
+            [key, value]
+          when :platform
+            [key, value]
           else
             UI.user_error!("Unknown parameter: #{key}")
           end
@@ -101,9 +116,11 @@ module Fastlane
 
         return path if Helper.test?
 
-        response = self.upload_build(params[:upload_url], path, client_options)
+        response = self.upload_build(params[:upload_url], path, client_options, params[:timeout])
         if parse_response(response)
           UI.success("Build URL: #{Actions.lane_context[SharedValues::TESTFAIRY_BUILD_URL]}")
+          UI.success("Download URL: #{Actions.lane_context[SharedValues::TESTFAIRY_DOWNLOAD_URL]}")
+          UI.success("Landing Page URL: #{Actions.lane_context[SharedValues::TESTFAIRY_LANDING_PAGE]}")
           UI.success("Build successfully uploaded to TestFairy.")
         else
           UI.user_error!("Error when trying to upload ipa to TestFairy")
@@ -117,8 +134,12 @@ module Fastlane
       def self.parse_response(response)
         if response.body && response.body.key?('status') && response.body['status'] == 'ok'
           build_url = response.body['build_url']
+          app_url = response.body['app_url']
+          landing_page_url = response.body['landing_page_url']
 
           Actions.lane_context[SharedValues::TESTFAIRY_BUILD_URL] = build_url
+          Actions.lane_context[SharedValues::TESTFAIRY_DOWNLOAD_URL] = app_url
+          Actions.lane_context[SharedValues::TESTFAIRY_LANDING_PAGE] = landing_page_url
 
           return true
         else
@@ -181,7 +202,6 @@ module Fastlane
                                        env_name: "FL_TESTFAIRY_UPLOAD_URL", # The name of the environment variable
                                        description: "API URL for TestFairy", # a short description of this parameter
                                        default_value: "https://upload.testfairy.com",
-                                       is_string: true,
                                        optional: true),
           FastlaneCore::ConfigItem.new(key: :testers_groups,
                                        optional: true,
@@ -221,7 +241,49 @@ module Fastlane
                                        type: Array,
                                        env_name: "FL_TESTFAIRY_OPTIONS",
                                        description: "Array of options (shake,video_only_wifi,anonymous)",
-                                       default_value: [])
+                                       default_value: []),
+          FastlaneCore::ConfigItem.new(key: :custom,
+                                       optional: true,
+                                       env_name: "FL_TESTFAIRY_CUSTOM",
+                                       description: "Array of custom options. Contact support for more information",
+                                       default_value: ''),
+          FastlaneCore::ConfigItem.new(key: :timeout,
+                                       env_name: "FL_TESTFAIRY_TIMEOUT",
+                                       description: "Request timeout in seconds",
+                                       type: Integer,
+                                       optional: true),
+          FastlaneCore::ConfigItem.new(key: :tags,
+                                       optional: true,
+                                       env_name: "FL_TESTFAIRY_TAGS",
+                                       description: "Custom tags that can be used to organize your builds",
+                                       type: Array,
+                                       default_value: []),
+          FastlaneCore::ConfigItem.new(key: :folder_name,
+                                       optional: true,
+                                       env_name: "FL_TESTFAIRY_FOLDER_NAME",
+                                       description: "Name of the dashboard folder that contains this app",
+                                       default_value: ''),
+          FastlaneCore::ConfigItem.new(key: :landing_page_mode,
+                                       optional: true,
+                                       env_name: "FL_TESTFAIRY_LANDING_PAGE_MODE",
+                                       description: "Visibility of build landing after upload. Can be 'open' or 'closed'",
+                                       default_value: 'open',
+                                       verify_block: proc do |value|
+                                         UI.user_error!("The landing page mode can only be open or closed") unless %w(open closed).include?(value)
+                                       end),
+          FastlaneCore::ConfigItem.new(key: :upload_to_saucelabs,
+                                       optional: true,
+                                       env_name: "FL_TESTFAIRY_UPLOAD_TO_SAUCELABS",
+                                       description: "Upload file directly to Sauce Labs. It can be 'on' or 'off'",
+                                       default_value: 'off',
+                                       verify_block: proc do |value|
+                                         UI.user_error!("The upload to Sauce Labs can only be on or off") unless %w(on off).include?(value)
+                                       end),
+          FastlaneCore::ConfigItem.new(key: :platform,
+                                       optional: true,
+                                       env_name: "FL_TESTFAIRY_PLATFORM",
+                                       description: "Use if upload build is not iOS or Android. Contact support for more information",
+                                       default_value: '')
         ]
       end
 
@@ -231,7 +293,12 @@ module Fastlane
             api_key: "...",
             ipa: "./ipa_file.ipa",
             comment: "Build #{lane_context[SharedValues::BUILD_NUMBER]}",
-          )'
+          )',
+          'testfairy(
+            api_key: "...",
+            apk: "../build/app/outputs/apk/qa/release/app-qa-release.apk",
+            comment: "Build #{lane_context[SharedValues::BUILD_NUMBER]}",
+           )'
         ]
       end
 
@@ -241,12 +308,14 @@ module Fastlane
 
       def self.output
         [
-          ['TESTFAIRY_BUILD_URL', 'URL of the newly uploaded build']
+          ['TESTFAIRY_BUILD_URL', 'URL for the sessions of the newly uploaded build'],
+          ['TESTFAIRY_DOWNLOAD_URL', 'URL directly to the newly uploaded build'],
+          ['TESTFAIRY_LANDING_PAGE', 'URL of the build\'s landing page']
         ]
       end
 
       def self.authors
-        ["taka0125", "tcurdt"]
+        ["taka0125", "tcurdt", "vijaysharm", "cdm2012"]
       end
 
       def self.is_supported?(platform)

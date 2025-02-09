@@ -4,7 +4,7 @@ version: "{build}"
 
 # branches to build
 branches:
-  # whitelist
+  # allowlist
   only:
     - master
 
@@ -23,11 +23,15 @@ init:
 # cloning the repository happens here
 
 install:
-  - set PATH=C:\Ruby24-x64\bin;%PATH%
+  - set PATH=C:\Ruby26-x64\bin;%PATH%
+  - FOR /F "usebackq delims==" %%A IN (`ruby .ci/compatible_gem_version`) DO gem update --system %%A
+  - FOR /F "usebackq delims==" %%A IN (`ruby .ci/bundler_version.rb`) DO gem install bundler -v %%A
   - bundle install
   # iconv
-  - appveyor DownloadFile https://downloads.sourceforge.net/project/gnuwin32/libiconv/1.9.2-1/libiconv-1.9.2-1.exe?download
-  - libiconv-1.9.2-1.exe /SILENT /SUPPRESSMSGBOXES
+  - appveyor DownloadFile
+    https://downloads.sourceforge.net/project/gnuwin32/libiconv/1.9.2-1/libiconv-1.9.2-1.exe?download
+    -FileName %TEMP%\libiconv.exe
+  - "%TEMP%\\libiconv.exe /SILENT /SUPPRESSMSGBOXES"
 
 environment:
   LC_ALL: en_US.UTF-8
@@ -40,8 +44,13 @@ before_test:
   - gem -v
   - bundle -v
   - which iconv
+  - which git
+  - git --version
 
 build: off
 
 test_script:
+  # Uncomment the first line and comment the second one to debug failing tests
+  # on Windows (some tests might fail with this).
+  # - cmd /V /C "set DEBUG=1 && bundle exec fastlane execute_tests"
   - bundle exec fastlane execute_tests

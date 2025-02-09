@@ -2,37 +2,61 @@ module Fastlane
   module Actions
     GIT_MERGE_COMMIT_FILTERING_OPTIONS = [:include_merges, :exclude_merges, :only_include_merges].freeze
 
-    def self.git_log_between(pretty_format, from, to, merge_commit_filtering, date_format = nil, ancestry_path)
-      command = ['git log']
-      command << "--pretty=\"#{pretty_format}\""
-      command << "--date=\"#{date_format}\"" if date_format
+    module SharedValues
+      GIT_BRANCH_ENV_VARS = %w(GIT_BRANCH BRANCH_NAME TRAVIS_BRANCH BITRISE_GIT_BRANCH CI_BUILD_REF_NAME CI_COMMIT_REF_NAME WERCKER_GIT_BRANCH BUILDKITE_BRANCH APPCENTER_BRANCH CIRCLE_BRANCH).reject do |branch|
+        # Removing because tests break on CircleCI
+        Helper.test? && branch == "CIRCLE_BRANCH"
+      end.freeze
+    end
+
+    def self.git_log_between(pretty_format, from, to, merge_commit_filtering, date_format = nil, ancestry_path, app_path)
+      command = %w(git log)
+      command << "--pretty=#{pretty_format}"
+      command << "--date=#{date_format}" if date_format
       command << '--ancestry-path' if ancestry_path
-      command << "#{from.shellescape}...#{to.shellescape}"
+      command << "#{from}...#{to}"
       command << git_log_merge_commit_filtering_option(merge_commit_filtering)
-      Actions.sh(command.compact.join(' '), log: false).chomp
+      command << app_path if app_path
+      # "*command" syntax expands "command" array into variable arguments, which
+      # will then be individually shell-escaped by Actions.sh.
+      Actions.sh(*command.compact, log: false).chomp
     rescue
       nil
     end
 
-    def self.git_log_last_commits(pretty_format, commit_count, merge_commit_filtering, date_format = nil, ancestry_path)
-      command = ['git log']
-      command << "--pretty=\"#{pretty_format}\""
-      command << "--date=\"#{date_format}\"" if date_format
+    def self.git_log_last_commits(pretty_format, commit_count, merge_commit_filtering, date_format = nil, ancestry_path, app_path)
+      command = %w(git log)
+      command << "--pretty=#{pretty_format}"
+      command << "--date=#{date_format}" if date_format
       command << '--ancestry-path' if ancestry_path
-      command << "-n #{commit_count}"
+      command << '-n' << commit_count.to_s
       command << git_log_merge_commit_filtering_option(merge_commit_filtering)
-      Actions.sh(command.compact.join(' '), log: false).chomp
+      command << app_path if app_path
+      Actions.sh(*command.compact, log: false).chomp
+    rescue
+      nil
+    end
+
+    def self.last_git_tag_hash(tag_match_pattern = nil)
+      tag_pattern_param = tag_match_pattern ? "=#{tag_match_pattern}" : ''
+      Actions.sh('git', 'rev-list', "--tags#{tag_pattern_param}", '--max-count=1').chomp
     rescue
       nil
     end
 
     def self.last_git_tag_name(match_lightweight = true, tag_match_pattern = nil)
-      tag_pattern_param = tag_match_pattern ? "=#{tag_match_pattern.shellescape}" : ''
+      hash = last_git_tag_hash(tag_match_pattern)
+      # If hash is nil (command fails), "git describe" command below will still
+      # run and provide some output, although it's definitely not going to be
+      # anything reasonably expected. Bail out early.
+      return unless hash
 
-      command = ['git describe']
+      command = %w(git describe)
       command << '--tags' if match_lightweight
-      command << "`git rev-list --tags#{tag_pattern_param} --max-count=1`"
-      Actions.sh(command.compact.join(' '), log: false).chomp
+      command << hash
+      command << '--match' if tag_match_pattern
+      command << tag_match_pattern if tag_match_pattern
+      Actions.sh(*command.compact, log: false).chomp
     rescue
       nil
     end
@@ -52,10 +76,10 @@ module Fastlane
     # Gets the last git commit information formatted into a String by the provided
     # pretty format String. See the git-log documentation for valid format placeholders
     def self.last_git_commit_formatted_with(pretty_format, date_format = nil)
-      command = ['git log -1']
-      command << "--pretty=\"#{pretty_format}\""
-      command << "--date=\"#{date_format}\"" if date_format
-      Actions.sh(command.compact.join(' '), log: false).chomp
+      command = %w(git log -1)
+      command << "--pretty=#{pretty_format}"
+      command << "--date=#{date_format}" if date_format
+      Actions.sh(*command.compact, log: false).chomp
     rescue
       nil
     end
@@ -97,13 +121,38 @@ module Fastlane
       return nil
     end
 
-    # Returns the current git branch - can be replaced using the environment variable `GIT_BRANCH`
+    # Returns the current git branch, or "HEAD" if it's not checked out to any branch
+    # Can be replaced using the environment variable `GIT_BRANCH`
+    # unless `FL_GIT_BRANCH_DONT_USE_ENV_VARS` is `true`
     def self.git_branch
-      return ENV['GIT_BRANCH'] if ENV['GIT_BRANCH'].to_s.length > 0 # set by Jenkins
-      s = Actions.sh("git rev-parse --abbrev-ref HEAD", log: false).chomp
-      return s.to_s.strip if s.to_s.length > 0
+      return self.git_branch_name_using_HEAD if FastlaneCore::Env.truthy?('FL_GIT_BRANCH_DONT_USE_ENV_VARS')
+
+      env_name = SharedValues::GIT_BRANCH_ENV_VARS.find { |env_var| FastlaneCore::Env.truthy?(env_var) }
+      ENV.fetch(env_name.to_s) do
+        self.git_branch_name_using_HEAD
+      end
+    end
+
+    # Returns the checked out git branch name or "HEAD" if you're in detached HEAD state
+    def self.git_branch_name_using_HEAD
+      # Rescues if not a git repo or no commits in a git repo
+      Actions.sh("git rev-parse --abbrev-ref HEAD", log: false).chomp
+    rescue => err
+      UI.verbose("Error getting git branch: #{err.message}")
       nil
-    rescue
+    end
+
+    # Returns the default git remote branch name
+    def self.git_remote_branch_name(remote_name)
+      # Rescues if not a git repo or no remote repo
+      if remote_name
+        Actions.sh("git remote show #{remote_name} | grep 'HEAD branch' | sed 's/.*: //'", log: false).chomp
+      else
+        # Query git for the current remote head
+        Actions.sh("variable=$(git remote) && git remote show $variable | grep 'HEAD branch' | sed 's/.*: //'", log: false).chomp
+      end
+    rescue => err
+      UI.verbose("Error getting git default remote branch: #{err.message}")
       nil
     end
 

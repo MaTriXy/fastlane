@@ -1,5 +1,6 @@
 require_relative 'encryption/interface'
 require_relative 'encryption/openssl'
+require_relative 'encryption/encryption'
 
 module Match
   module Encryption
@@ -11,6 +12,16 @@ module Match
             # to keychain_name for the name of the keychain entry
             params[:keychain_name] = params[:git_url]
             return Encryption::OpenSSL.configure(params)
+          },
+          "google_cloud" => lambda { |params|
+            return nil
+          },
+          "s3" => lambda { |params|
+            params[:keychain_name] = params[:s3_bucket]
+            return params[:s3_skip_encryption] ? nil : Encryption::OpenSSL.configure(params)
+          },
+          "gitlab_secure_files" => lambda { |params|
+            return nil
           }
         }
       end

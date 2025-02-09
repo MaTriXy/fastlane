@@ -24,9 +24,8 @@ module Fastlane
             UI.user_error!("Could not find the specified xcodeproj: #{xcodeproj_path}") unless File.directory?(xcodeproj_path)
           end
         else
-          all_xcodeproj_paths = Dir[File.expand_path(File.join(repo_path, '**/*.xcodeproj'))]
-          # find an xcodeproj (ignoring the Cocoapods one)
-          xcodeproj_paths = Fastlane::Actions.ignore_cocoapods_path(all_xcodeproj_paths)
+          # find an xcodeproj (ignoring dependencies)
+          xcodeproj_paths = Fastlane::Helper::XcodeprojHelper.find(repo_path)
 
           # no projects found: error
           UI.user_error!('Could not find a .xcodeproj in the current repository\'s working directory.') if xcodeproj_paths.count == 0
@@ -128,7 +127,7 @@ module Fastlane
                                        description: "Forces the commit, even if other files than the ones containing the version number have been modified",
                                        optional: true,
                                        default_value: false,
-                                       is_string: false),
+                                       type: Boolean),
           FastlaneCore::ConfigItem.new(key: :test_dirty_files,
                                        env_name: "FL_HG_COMMIT_TEST_DIRTY_FILES",
                                        description: "A list of dirty files passed in for testing",

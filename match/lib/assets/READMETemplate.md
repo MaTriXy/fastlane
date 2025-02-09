@@ -14,13 +14,11 @@ Make sure you have the latest version of the Xcode command line tools installed:
 xcode-select --install
 ```
 
-Install _fastlane_ using
+Install _fastlane_ using bundler by following instructions here on [fastlane docs](https://docs.fastlane.tools).
 
-```
-[sudo] gem install fastlane -NV
-```
+or alternatively using 
 
-or alternatively using `brew cask install fastlane`
+`brew install fastlane`
 
 ### Usage
 
@@ -29,12 +27,15 @@ Navigate to your project folder and run
 ```
 fastlane match appstore
 ```
+
 ```
 fastlane match adhoc
 ```
+
 ```
 fastlane match development
 ```
+
 ```
 fastlane match enterprise
 ```
@@ -51,6 +52,6 @@ This directory contains all your certificates with their private keys
 
 This directory contains all provisioning profiles
 
-------------------------------------
+---
 
 For more information open [fastlane match git repo](https://docs.fastlane.tools/actions/match/)

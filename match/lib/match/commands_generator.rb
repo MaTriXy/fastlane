@@ -1,16 +1,20 @@
 require 'commander'
 
 require 'fastlane_core/configuration/configuration'
-require_relative 'module'
+require 'fastlane_core/ui/help_formatter'
 
 require_relative 'nuke'
 require_relative 'change_password'
 require_relative 'setup'
 require_relative 'runner'
 require_relative 'options'
+require_relative 'migrate'
+require_relative 'importer'
 
 require_relative 'storage'
 require_relative 'encryption'
+
+require_relative 'module'
 
 HighLine.track_eof = false
 
@@ -29,9 +33,10 @@ module Match
       program :help, 'Author', 'Felix Krause <match@krausefx.com>'
       program :help, 'Website', 'https://fastlane.tools'
       program :help, 'Documentation', 'https://docs.fastlane.tools/actions/match/'
-      program :help_formatter, :compact
+      program :help_formatter, FastlaneCore::HelpFormatter
 
       global_option('--verbose') { FastlaneCore::Globals.verbose = true }
+      global_option('--env STRING[,STRING2]', String, 'Add environment(s) to use with `dotenv`')
 
       command :run do |c|
         c.syntax = 'fastlane match'
@@ -113,20 +118,42 @@ module Match
           params = FastlaneCore::Configuration.create(Match::Options.available_options, options.__hash__)
           params.load_configuration_file("Matchfile")
 
-          storage = Storage.for_mode(params[:storage_mode], {
-            git_url: params[:git_url],
-            shallow_clone: params[:shallow_clone],
-            git_branch: params[:git_branch],
-            clone_branch_directly: params[:clone_branch_directly]
-          })
+          storage = Storage.from_params(params)
           storage.download
 
           encryption = Encryption.for_storage_mode(params[:storage_mode], {
             git_url: params[:git_url],
+            s3_bucket: params[:s3_bucket],
+            s3_skip_encryption: params[:s3_skip_encryption],
             working_directory: storage.working_directory
           })
-          encryption.decrypt_files
+          encryption.decrypt_files if encryption
           UI.success("Repo is at: '#{storage.working_directory}'")
+        end
+      end
+
+      command :import do |c|
+        c.syntax = "fastlane match import"
+        c.description = "Imports certificates and profiles into the encrypted repository"
+
+        FastlaneCore::CommanderGenerator.new.generate(Match::Options.available_options, command: c)
+
+        c.action do |args, options|
+          params = FastlaneCore::Configuration.create(Match::Options.available_options, options.__hash__)
+          params.load_configuration_file("Matchfile") # this has to be done *before* overwriting the value
+          Match::Importer.new.import_cert(params)
+        end
+      end
+
+      command :migrate do |c|
+        c.syntax = "fastlane match migrate"
+        c.description = "Migrate from one storage backend to another one"
+
+        FastlaneCore::CommanderGenerator.new.generate(Match::Options.available_options, command: c)
+
+        c.action do |args, options|
+          params = FastlaneCore::Configuration.create(Match::Options.available_options, options.__hash__)
+          Match::Migrate.new.migrate(params)
         end
       end
 

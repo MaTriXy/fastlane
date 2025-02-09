@@ -4,6 +4,7 @@ module Fastlane
       APPETIZE_PUBLIC_KEY = :APPETIZE_PUBLIC_KEY
       APPETIZE_APP_URL = :APPETIZE_APP_URL
       APPETIZE_MANAGE_URL = :APPETIZE_MANAGE_URL
+      APPETIZE_API_HOST = :APPETIZE_API_HOST
     end
 
     class AppetizeAction < Action
@@ -30,6 +31,10 @@ module Fastlane
 
         params[:note] = options[:note] if options[:note].to_s.length > 0
 
+        if options[:timeout]
+          params[:timeout] = options[:timeout]
+        end
+
         uri = URI.parse(appetize_url(options))
         req = create_request(uri, params)
         req.basic_auth(options[:api_token], nil)
@@ -45,6 +50,10 @@ module Fastlane
 
         response = http.request(req)
 
+        unless response.code.to_i.between?(200, 299)
+          UI.user_error!("Error uploading to Appetize.io: received HTTP #{response.code} with body #{response.body}")
+        end
+
         parse_response(response) # this will raise an exception if something goes wrong
 
         UI.message("App URL: #{Actions.lane_context[SharedValues::APPETIZE_APP_URL]}")
@@ -54,7 +63,8 @@ module Fastlane
       end
 
       def self.appetize_url(options)
-        "https://api.appetize.io/v1/apps/#{options[:public_key]}"
+        Actions.lane_context[SharedValues::APPETIZE_API_HOST] = options[:api_host]
+        "https://#{options[:api_host]}/v1/apps/#{options[:public_key]}"
       end
       private_class_method :appetize_url
 
@@ -100,33 +110,35 @@ module Fastlane
 
       def self.available_options
         [
+          FastlaneCore::ConfigItem.new(key: :api_host,
+                                       env_name: "APPETIZE_API_HOST",
+                                       description: "Appetize API host",
+                                       default_value: 'api.appetize.io',
+                                       verify_block: proc do |value|
+                                         UI.user_error!("API host should not contain the scheme e.g. `https`") if value.start_with?('https')
+                                       end),
           FastlaneCore::ConfigItem.new(key: :api_token,
                                        env_name: "APPETIZE_API_TOKEN",
                                        sensitive: true,
                                        description: "Appetize.io API Token",
-                                       is_string: true,
                                        verify_block: proc do |value|
                                          UI.user_error!("No API Token for Appetize.io given, pass using `api_token: 'token'`") unless value.to_s.length > 0
                                        end),
           FastlaneCore::ConfigItem.new(key: :url,
                                        env_name: "APPETIZE_URL",
                                        description: "URL from which the ipa file can be fetched. Alternative to :path",
-                                       is_string: true,
                                        optional: true),
           FastlaneCore::ConfigItem.new(key: :platform,
                                        env_name: "APPETIZE_PLATFORM",
                                        description: "Platform. Either `ios` or `android`",
-                                       is_string: true,
                                        default_value: 'ios'),
           FastlaneCore::ConfigItem.new(key: :path,
                                        env_name: "APPETIZE_FILE_PATH",
                                        description: "Path to zipped build on the local filesystem. Either this or `url` must be specified",
-                                       is_string: true,
                                        optional: true),
           FastlaneCore::ConfigItem.new(key: :public_key,
                                        env_name: "APPETIZE_PUBLICKEY",
                                        description: "If not provided, a new app will be created. If provided, the existing build will be overwritten",
-                                       is_string: true,
                                        optional: true,
                                        verify_block: proc do |value|
                                          if value.start_with?("private_")
@@ -136,21 +148,29 @@ module Fastlane
           FastlaneCore::ConfigItem.new(key: :note,
                                        env_name: "APPETIZE_NOTE",
                                        description: "Notes you wish to add to the uploaded app",
-                                       is_string: true,
-                                       optional: true)
+                                       optional: true),
+          FastlaneCore::ConfigItem.new(key: :timeout,
+                                       env_name: "APPETIZE_TIMEOUT",
+                                       description: "The number of seconds to wait until automatically ending the session due to user inactivity. Must be 30, 60, 90, 120, 180, 300, 600, 1800, 3600 or 7200. Default is 120",
+                                       type: Integer,
+                                       optional: true,
+                                       verify_block: proc do |value|
+                                         UI.user_error!("The value provided doesn't match any of the supported options.") unless [30, 60, 90, 120, 180, 300, 600, 1800, 3600, 7200].include?(value)
+                                       end)
         ]
       end
 
       def self.output
         [
-          ['APPETIZE_PUBLIC_KEY', 'a public identifier for your app. Use this to update your app after it has been initially created'],
+          ['APPETIZE_API_HOST', 'Appetize API host.'],
+          ['APPETIZE_PUBLIC_KEY', 'a public identifier for your app. Use this to update your app after it has been initially created.'],
           ['APPETIZE_APP_URL', 'a page to test and share your app.'],
           ['APPETIZE_MANAGE_URL', 'a page to manage your app.']
         ]
       end
 
       def self.authors
-        ["klundberg", "giginet"]
+        ["klundberg", "giginet", "steprescott"]
       end
 
       def self.category
@@ -161,6 +181,12 @@ module Fastlane
         [
           'appetize(
             path: "./MyApp.zip",
+            api_token: "yourapitoken", # get it from https://appetize.io/docs#request-api-token
+            public_key: "your_public_key" # get it from https://appetize.io/dashboard
+          )',
+          'appetize(
+            path: "./MyApp.zip",
+            api_host: "company.appetize.io", # only needed for enterprise hosted solution
             api_token: "yourapitoken", # get it from https://appetize.io/docs#request-api-token
             public_key: "your_public_key" # get it from https://appetize.io/dashboard
           )'

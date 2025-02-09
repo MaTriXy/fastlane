@@ -1,8 +1,8 @@
 describe Spaceship::AppVersion, all: true do
-  before { Spaceship::Tunes.login }
+  include_examples "common spaceship login"
 
   let(:client) { Spaceship::AppVersion.client }
-  let(:app) { Spaceship::Application.all.first }
+  let(:app) { Spaceship::Application.all.find { |a| a.apple_id == "898536088" } }
 
   describe "successfully loads and parses the app version" do
     it "inspect works" do
@@ -76,14 +76,14 @@ describe Spaceship::AppVersion, all: true do
         })
       end
 
-      it "increquent_mild" do
+      it "infrequent_mild" do
         val = @v.raw_data['ratings']['nonBooleanDescriptors'].find do |a|
           a['name'].include?('CARTOON_FANTASY_VIOLENCE')
         end
         expect(val['level']).to eq("ITC.apps.ratings.level.INFREQUENT_MILD")
       end
 
-      it "increquent_mild" do
+      it "infrequent_mild" do
         val = @v.raw_data['ratings']['nonBooleanDescriptors'].find do |a|
           a['name'].include?('CARTOON_FANTASY_VIOLENCE')
         end
@@ -113,7 +113,7 @@ describe Spaceship::AppVersion, all: true do
     end
 
     describe "#candidate_builds" do
-      it "proplery fetches and parses all builds ready to be deployed" do
+      it "properly fetches and parses all builds ready to be deployed" do
         version = app.edit_version
         res = version.candidate_builds
         build = res.first
@@ -145,6 +145,18 @@ describe Spaceship::AppVersion, all: true do
         status = version.release!
         # Note right now we don't really update the raw_data after the release
         expect(version.raw_status).to eq('pendingDeveloperRelease')
+      end
+    end
+
+    describe "release an app version in phased release to all users" do
+      it "allows releasing the live version to all users" do
+        version = app.live_version
+
+        version.raw_status = 'readyForSale'
+
+        status = version.release_to_all_users!
+
+        expect(version.raw_status).to eq('readyForSale')
       end
     end
 
@@ -231,7 +243,7 @@ describe Spaceship::AppVersion, all: true do
   end
 
   describe "Modifying the app version" do
-    let(:version) { Spaceship::Application.all.first.edit_version }
+    let(:version) { app.edit_version }
 
     it "doesn't allow modification of localized properties without the language" do
       begin
@@ -587,7 +599,7 @@ describe Spaceship::AppVersion, all: true do
         it "fails with error if the screenshot to remove doesn't exist" do
           expect do
             version.upload_screenshot!(nil, 5, "English", 'iphone4', false)
-          end.to raise_error("cannot remove screenshot with non existing sort_order")
+          end.to raise_error("cannot remove screenshot with nonexistent sort_order")
         end
       end
     end
@@ -713,7 +725,7 @@ describe Spaceship::AppVersion, all: true do
   end
 
   describe "Modifying the app live version" do
-    let(:version) { Spaceship::Application.all.first.live_version }
+    let(:version) { app.live_version }
 
     describe "Generate promo codes", focus: true do
       it "fetches remaining promocodes" do
@@ -732,6 +744,20 @@ describe Spaceship::AppVersion, all: true do
         expect(promocodes.version.number_of_codes).to eq(3)
         expect(promocodes.version.maximum_number_of_codes).to eq(100)
         expect(promocodes.version.contract_file_name).to eq('promoCodes/ios/spqr5/PromoCodeHolderTermsDisplay_en_us.html')
+      end
+    end
+  end
+
+  describe "Validate attachment file" do
+    before { Spaceship::Tunes.login }
+    let(:client) { Spaceship::AppVersion.client }
+    describe "successfully loads and parses the app version and attachment" do
+      it "contains the right information" do
+        TunesStubbing.itc_stub_app_attachment
+        v = app.edit_version(platform: 'ios')
+        expect(v.review_attachment_file.original_file_name).to eq("attachment.txt")
+        expect(v.review_attachment_file.asset_token).to eq("test/v4/02/88/4d/02884d3d-92ea-5e6a-2a7b-b19da39f73a6/attachment.txt")
+        expect(v.review_attachment_file.url).to eq("https://iosapps-ssl.itunes.apple.com/itunes-assets/test/v4/02/88/4d/02884d3d-92ea-5e6a-2a7b-b19da39f73a6/attachment.txt")
       end
     end
   end

@@ -21,7 +21,7 @@ module Gym
           print("Invalid code signing settings")
           print("Your project defines a provisioning profile that doesn't match the bundle identifier of your app")
           print("Make sure you use the correct provisioning profile for this app")
-          print("Take a look at the ouptput above for more information")
+          print("Take a look at the output above for more information")
           print("You can follow this guide: https://docs.fastlane.tools/codesigning/GettingStarted/")
         when /provisioning profiles matching the bundle identifier .(.*)./ # the . around the (.*) are for the strange "
           print("You don't have the provisioning profile for '#{$1}' installed on the local machine")
@@ -127,6 +127,14 @@ module Gym
         UI.build_failure!("Archive invalid")
       end
 
+      def handle_empty_ipa
+        UI.build_failure!("IPA invalid")
+      end
+
+      def handle_empty_pkg
+        UI.build_failure!("PKG invalid")
+      end
+
       private
 
       # Just to make things easier
@@ -143,7 +151,7 @@ module Gym
         # `xcodebuild` doesn't properly mark lines as failure reason or important information
         # so we assume that the last few lines show the error message that's relevant
         # (at least that's what was correct during testing)
-        log_content = File.read(log_path).split("\n")[-5..-1]
+        log_content = File.read(log_path).split("\n").last(5)
         log_content.each do |row|
           UI.command_output(row)
         end

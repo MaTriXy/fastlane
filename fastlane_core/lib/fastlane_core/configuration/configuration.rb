@@ -120,7 +120,7 @@ module FastlaneCore
           index = @available_options.find_index { |item| item.key == conflicting_option_key }
           conflicting_option = @available_options[index]
 
-          # ignore conflicts because because value of conflict option is nil
+          # ignore conflicts because value of conflict option is nil
           next if @values[conflicting_option.key].nil?
 
           if current.conflict_block
@@ -208,18 +208,19 @@ module FastlaneCore
     #####################################################
 
     # Returns the value for a certain key. fastlane_core tries to fetch the value from different sources
-    # if 'ask' is true and the value is not present, the user will be prompted to provide a value
+    # if 'ask' is true and the value is not present, the user will be prompted to provide a value if optional
+    # if 'force_ask' is true, the option is not required to be optional to ask
     # rubocop:disable Metrics/PerceivedComplexity
-    def fetch(key, ask: true)
-      UI.user_error!("Key '#{key}' must be a symbol. Example :app_id.") unless key.kind_of?(Symbol)
+    def fetch(key, ask: true, force_ask: false)
+      UI.crash!("Key '#{key}' must be a symbol. Example :#{key}") unless key.kind_of?(Symbol)
 
       option = verify_options_key!(key)
 
       # Same order as https://docs.fastlane.tools/advanced/#priorities-of-parameters-and-options
       value = if @values.key?(key) && !@values[key].nil?
                 @values[key]
-              elsif option.env_name && !ENV[option.env_name].nil?
-                ENV[option.env_name].dup
+              elsif (env_value = option.fetch_env_value)
+                env_value
               elsif self.config_file_options.key?(key)
                 self.config_file_options[key]
               else
@@ -228,7 +229,7 @@ module FastlaneCore
 
       value = option.auto_convert_value(value)
       value = nil if value.nil? && !option.string? # by default boolean flags are false
-      return value unless value.nil? && !option.optional && ask
+      return value unless value.nil? && (!option.optional || force_ask) && ask
 
       # fallback to asking
       if Helper.test? || !UI.interactive?
@@ -242,11 +243,17 @@ module FastlaneCore
       while value.nil?
         UI.important("To not be asked about this value, you can specify it using '#{option.key}'") if ENV["FASTLANE_ONBOARDING_IN_PROCESS"].to_s.length == 0
         value = option.sensitive ? UI.password("#{option.description}: ") : UI.input("#{option.description}: ")
+
+        # ConfigItem allows to specify a type for the item but UI.password and
+        # UI.input return String values. Try to convert the String input to
+        # the option's type before passing it along.
+        value = option.auto_convert_value(value)
+
         # Also store this value to use it from now on
         begin
           set(key, value)
         rescue => ex
-          puts(ex)
+          UI.error(ex)
           value = nil
         end
       end
@@ -263,7 +270,7 @@ module FastlaneCore
     # Overwrites or sets a new value for a given key
     # @param key [Symbol] Must be a symbol
     def set(key, value)
-      UI.user_error!("Key '#{key}' must be a symbol. Example :#{key}.") unless key.kind_of?(Symbol)
+      UI.crash!("Key '#{key}' must be a symbol. Example :#{key}.") unless key.kind_of?(Symbol)
       option = option_for_key(key)
 
       unless option

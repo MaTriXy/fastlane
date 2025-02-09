@@ -15,7 +15,19 @@ module Fastlane
           # Multi line
           end_tag = params[:multi_line_end_keyword]
           UI.important("Submit inputs using \"#{params[:multi_line_end_keyword]}\"")
-          user_input = STDIN.gets(end_tag).chomp.gsub(end_tag, "").strip
+          user_input = ""
+          loop do
+            line = STDIN.gets # returns `nil` if called at end of file
+            break unless line
+            end_tag_index = line.index(end_tag)
+            if end_tag_index.nil?
+              user_input << line
+            else
+              user_input << line.slice(0, end_tag_index)
+              user_input = user_input.strip
+              break
+            end
+          end
         else
           # Standard one line input
           if params[:secure_text]
@@ -55,15 +67,14 @@ module Fastlane
           FastlaneCore::ConfigItem.new(key: :boolean,
                                        description: "Is that a boolean question (yes/no)? This will add (y/n) at the end",
                                        default_value: false,
-                                       is_string: false),
+                                       type: Boolean),
           FastlaneCore::ConfigItem.new(key: :secure_text,
                                        description: "Is that a secure text (yes/no)?",
                                        default_value: false,
-                                       is_string: false),
+                                       type: Boolean),
           FastlaneCore::ConfigItem.new(key: :multi_line_end_keyword,
                                        description: "Enable multi-line inputs by providing an end text (e.g. 'END') which will stop the user input",
-                                       optional: true,
-                                       is_string: true)
+                                       optional: true)
         ]
       end
 
@@ -87,7 +98,7 @@ module Fastlane
             multi_line_end_keyword: "END"
           )
 
-          crashlytics(notes: changelog)'
+          pilot(changelog: changelog)'
         ]
       end
 

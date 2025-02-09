@@ -2,6 +2,7 @@ module Fastlane
   module Helper
     module PluginScoresHelper
       require 'faraday'
+      require 'faraday_middleware'
       require 'yaml'
 
       class FastlanePluginRating
@@ -51,7 +52,7 @@ module Fastlane
           self.homepage = hash["homepage_uri"] || hash["documentation_uri"]
           self.raw_hash = hash
 
-          has_github_page = self.homepage.to_s.include?("https://github.com") # Here we can add non GitHub support one day
+          has_github_page = self.homepage.to_s.start_with?("https://github.com") # Here we can add non GitHub support one day
 
           self.data = {
             has_homepage: self.homepage.to_s.length > 5,
@@ -294,6 +295,7 @@ module Fastlane
         end
 
         # Parses the file to find all included actions
+        # rubocop:disable Metrics/PerceivedComplexity
         def parse_file(file, debug_state: false)
           lines = File.read(file).lines
           actions = []
@@ -325,7 +327,12 @@ module Fastlane
               end
             when :in_method
               if (string_statement = string_statement_from_line(line))
-                last_string_statement = string_statement
+                # Multiline support for `description` method
+                if last_method_name == 'description' && !last_string_statement.nil?
+                  last_string_statement.concat(string_statement)
+                else
+                  last_string_statement = string_statement
+                end
               end
               if is_block?(line)
                 self.state << :in_block

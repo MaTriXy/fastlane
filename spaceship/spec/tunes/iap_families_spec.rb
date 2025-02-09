@@ -1,7 +1,8 @@
 describe Spaceship::Tunes::IAPFamilies do
-  before { Spaceship::Tunes.login }
+  before { TunesStubbing.itc_stub_iap }
+  include_examples "common spaceship login"
   let(:client) { Spaceship::Application.client }
-  let(:app) { Spaceship::Application.all.first }
+  let(:app) { Spaceship::Application.all.find { |a| a.apple_id == "898536088" } }
   let(:purchase) { app.in_app_purchases }
   describe "Subscription Families" do
     it "Loads IAP Families List" do

@@ -183,7 +183,7 @@ module Fastlane
       end
 
       def self.description
-        "Upload a new build to [HockeyApp](https://hockeyapp.net/)"
+        "Refer to [App Center](https://github.com/Microsoft/fastlane-plugin-appcenter/)"
       end
 
       def self.available_options
@@ -226,19 +226,13 @@ module Fastlane
                                        description: "Path to your symbols file. For iOS and Mac provide path to app.dSYM.zip. For Android provide path to mappings.txt file",
                                        default_value: Actions.lane_context[SharedValues::DSYM_OUTPUT_PATH],
                                        default_value_dynamic: true,
-                                       optional: true,
-                                       verify_block: proc do |value|
-                                         # validation is done in the action
-                                       end),
+                                       optional: true),
           FastlaneCore::ConfigItem.new(key: :create_update,
                                        env_name: "FL_HOCKEY_CREATE_UPDATE",
                                        description: "Set true if you want to create then update your app as opposed to just upload it."\
                                          " You will need the 'public_identifier', 'bundle_version' and 'bundle_short_version'",
-                                       is_string: false,
-                                       default_value: false,
-                                       verify_block: proc do |value|
-                                         # validation is done in the action
-                                       end),
+                                       type: Boolean,
+                                       default_value: false),
           FastlaneCore::ConfigItem.new(key: :notes,
                                        env_name: "FL_HOCKEY_NOTES",
                                        description: "Beta Notes",
@@ -307,7 +301,7 @@ module Fastlane
           FastlaneCore::ConfigItem.new(key: :upload_dsym_only,
                                       env_name: "FL_HOCKEY_UPLOAD_DSYM_ONLY",
                                       description: "Flag to upload only the dSYM file to hockey app",
-                                      is_string: false,
+                                      type: Boolean,
                                       default_value: false),
           FastlaneCore::ConfigItem.new(key: :owner_id,
                                       env_name: "FL_HOCKEY_OWNER_ID",
@@ -328,12 +322,11 @@ module Fastlane
           FastlaneCore::ConfigItem.new(key: :bypass_cdn,
                                       env_name: "FL_HOCKEY_BYPASS_CDN",
                                       description: "Flag to bypass Hockey CDN when it uploads successfully but reports error",
-                                      is_string: false,
+                                      type: Boolean,
                                       default_value: false),
           FastlaneCore::ConfigItem.new(key: :dsa_signature,
                                       env_name: "FL_HOCKEY_DSA_SIGNATURE",
                                       description: "DSA signature for sparkle updates for macOS",
-                                      is_string: true,
                                       default_value: "",
                                       optional: true)
         ]
@@ -356,6 +349,9 @@ module Fastlane
 
       def self.details
         [
+          "HockeyApp will be no longer supported and will be transitioned into App Center on November 16, 2019.",
+          "Please migrate over to [App Center](https://github.com/Microsoft/fastlane-plugin-appcenter/)",
+          "",
           "Symbols will also be uploaded automatically if a `app.dSYM.zip` file is found next to `app.ipa`. In case it is located in a different place you can specify the path explicitly in the `:dsym` parameter.",
           "More information about the available options can be found in the [HockeyApp Docs](http://support.hockeyapp.net/kb/api/api-versions#upload-version)."
         ].join("\n")
@@ -376,12 +372,26 @@ module Fastlane
             bundle_version: "1.0.2.145",
             ipa: "./my.msi",
             notes: "Changelog"
+          )',
+          '# You can bypass the CDN if you are uploading to Hockey and receive an SSL error (which can happen on corporate firewalls)
+          hockey(
+            api_token: "...",
+            ipa: "./app.ipa",
+            notes: "Changelog",
+            bypass_cdn: true
           )'
         ]
       end
 
       def self.category
-        :beta
+        :deprecated
+      end
+
+      def self.deprecated_notes
+        [
+          "HockeyApp will be no longer supported and will be transitioned into App Center on November 16, 2019.",
+          "Please migrate over to [App Center](https://github.com/Microsoft/fastlane-plugin-appcenter/)"
+        ].join("\n")
       end
     end
     # rubocop:enable Metrics/ClassLength

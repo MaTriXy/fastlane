@@ -110,7 +110,7 @@ module Fastlane
 
     # Is printed out in the Steps: output in the terminal
     # Return nil if you don't want any logging in the terminal/JUnit Report
-    def self.step_text
+    def self.step_text(params)
       self.action_name
     end
 
@@ -121,7 +121,7 @@ module Fastlane
 
     # instead of "AddGitAction", this will return "add_git" to print it to the user
     def self.action_name
-      self.name.split('::').last.gsub('Action', '').fastlane_underscore
+      self.name.split('::').last.gsub(/Action$/, '').fastlane_underscore
     end
 
     def self.lane_context
@@ -134,7 +134,7 @@ module Fastlane
       UI.user_error!("To call another action from an action use `other_action.#{method_sym}` instead")
     end
 
-    # When shelling out from the actoin, should we use `bundle exec`?
+    # When shelling out from the action, should we use `bundle exec`?
     def self.shell_out_should_use_bundle_exec?
       return File.exist?('Gemfile') && !Helper.contained_fastlane?
     end
@@ -179,12 +179,20 @@ class String
 
   def markdown_clean_heredoc!
     self.chomp! # remove the last new line added by the heredoc
-    self.dedent! # remove the leading whitespace (similar to the squigly heredoc `<<~`)
+    self.dedent! # remove the leading whitespace (similar to the squiggly heredoc `<<~`)
   end
 
   def dedent!
     first_line_indent = self.match(/^\s*/)[0]
 
     self.gsub!(/^#{first_line_indent}/, "")
+  end
+
+  def remove_markdown
+    string = self.gsub(/^>/, "") # remove Markdown quotes
+    string = string.gsub(/\[http[^\]]+\]\(([^)]+)\)/, '\1 🔗') # remove Markdown links
+    string = string.gsub(/\[([^\]]+)\]\(([^\)]+)\)/, '"\1" (\2 🔗)') # remove Markdown links with custom text
+    string = string.gsub("|", "") # remove new line preserve markers
+    return string
   end
 end

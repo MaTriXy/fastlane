@@ -21,7 +21,7 @@ module Fastlane
         end
 
         if action < Action
-          current << action.description if action.description
+          current << action.description.to_s.remove_markdown if action.description
 
           authors = Array(action.author || action.authors)
           current << authors.first.green if authors.count == 1
@@ -64,7 +64,7 @@ module Fastlane
         if Fastlane::Actions.is_deprecated?(action)
           puts("==========================================".deprecated)
           puts("This action (#{filter}) is deprecated".deprecated)
-          puts(action.deprecated_notes.to_s.deprecated) if action.deprecated_notes
+          puts(action.deprecated_notes.to_s.remove_markdown.deprecated) if action.deprecated_notes
           puts("==========================================\n".deprecated)
         end
 
@@ -107,16 +107,13 @@ module Fastlane
       rows = []
 
       if action.description
-        rows << [action.description]
+        description = action.description.to_s.remove_markdown
+        rows << [description]
         rows << [' ']
       end
 
       if action.details
-        details = action.details
-        details.gsub!(/^>/, "") # remove Markdown quotes
-        details.gsub!(/\[http[^\]]+\]\(([^)]+)\)/, '\1 🔗') # remove Markdown links
-        details.gsub!(/\[([^\]]+)\]\(([^\)]+)\)/, '"\1" (\2 🔗)') # remove Markdown links with custom text
-        details.gsub!("|", "") # remove new line preserve markers
+        details = action.details.to_s.remove_markdown
         details.split("\n").each do |detail|
           row = detail.empty? ? ' ' : detail
           rows << [row]
@@ -138,7 +135,7 @@ module Fastlane
       if options
         puts(Terminal::Table.new(
                title: "#{name} Options".green,
-               headings: ['Key', 'Description', 'Env Var', 'Default'],
+               headings: ['Key', 'Description', 'Env Var(s)', 'Default'],
                rows: FastlaneCore::PrintTable.transform_output(options)
         ))
       else
@@ -179,7 +176,7 @@ module Fastlane
         # them as broken actions in the table, regardless of platform specification
         next if platform && action.respond_to?(:is_supported?) && !action.is_supported?(platform.to_sym)
 
-        name = symbol.to_s.gsub('Action', '').fastlane_underscore
+        name = symbol.to_s.gsub(/Action$/, '').fastlane_underscore
         yield(action, name)
       end
     end
@@ -200,7 +197,7 @@ module Fastlane
       if options.kind_of?(Array)
         options.each do |current|
           if current.kind_of?(FastlaneCore::ConfigItem)
-            rows << [current.key.to_s.yellow, current.deprecated ? current.description.red : current.description, current.env_name, current.help_default_value]
+            rows << [current.key.to_s.yellow, current.deprecated ? current.description.red : current.description, current.env_names.join(", "), current.help_default_value]
           elsif current.kind_of?(Array)
             # Legacy actions that don't use the new config manager
             UI.user_error!("Invalid number of elements in this row: #{current}. Must be 2 or 3") unless [2, 3].include?(current.count)
